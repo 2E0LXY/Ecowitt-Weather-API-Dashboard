@@ -6,6 +6,7 @@
     <title>Ecowitt Live Weather Dashboard</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
     
@@ -183,7 +184,7 @@
         </div>
 
 
-        <section class="glass-card p-4 mb-6">
+        <section class="glass-card p-4 mb-6 live-only">
             <div class="flex items-center justify-between mb-3">
                 <h2 class="text-sm font-semibold text-blue-200 uppercase tracking-wider">DB Stats (24h)</h2>
                 <span id="stats-last-age" class="text-xs text-blue-300">Last saved: --</span>
@@ -212,7 +213,7 @@
             </div>
         </section>
 
-        <section class="glass-card p-5 mb-6">
+        <section class="glass-card p-5 mb-6 live-only">
             <div class="condition-bar mb-4">
                 <div class="condition-left">
                     <i id="condition-icon" class="ph-fill ph-cloud text-3xl text-sky-300"></i>
@@ -460,6 +461,17 @@
                 </button>
             </div>
 
+            <div class="glass-card p-4 mb-6">
+                <h3 class="text-sm font-semibold text-blue-200 uppercase tracking-wider mb-3">Historic Graphs</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="rounded-lg bg-white/5 border border-white/10 p-3"><canvas id="chart-temp" height="160"></canvas></div>
+                    <div class="rounded-lg bg-white/5 border border-white/10 p-3"><canvas id="chart-humidity" height="160"></canvas></div>
+                    <div class="rounded-lg bg-white/5 border border-white/10 p-3"><canvas id="chart-wind" height="160"></canvas></div>
+                    <div class="rounded-lg bg-white/5 border border-white/10 p-3"><canvas id="chart-rain" height="160"></canvas></div>
+                    <div class="rounded-lg bg-white/5 border border-white/10 p-3 md:col-span-2"><canvas id="chart-lightning" height="140"></canvas></div>
+                </div>
+            </div>
+
             <div class="glass-card overflow-hidden">
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse">
@@ -527,6 +539,14 @@
         let hasFastPrefill = false;
         let aiForecastInFlight = false;
         let aiForecastLastSuccessAt = 0;
+        let histCharts = {};
+        const currentOverlay = {
+            tempC: null,
+            humidity: null,
+            windKmh: null,
+            rainMm: null,
+            lightning: null
+        };
 
         // Elements
         const refreshBtn = document.getElementById('refresh-btn');
@@ -559,6 +579,7 @@
         const aiComfortEl = document.getElementById('ai-comfort-outlook');
         const aiRisksEl = document.getElementById('ai-risks');
         const aiConfidenceEl = document.getElementById('ai-confidence');
+        const liveOnlySections = document.querySelectorAll('.live-only');
         
         // Loader elements
         const loaderText = document.getElementById('loader-text');
@@ -1110,6 +1131,12 @@
                 lightningBattEl.innerHTML = `<i class="ph ${battStatus.icon} ${battStatus.color}"></i> <span class="${battStatus.color}">${battStatus.text}</span>`;
             }
 
+            currentOverlay.tempC = Number.isFinite(outTempF) ? fToC(outTempF) : null;
+            currentOverlay.humidity = Number.isFinite(parseFloat(getVal(d, 'outdoor.humidity.value'))) ? parseFloat(getVal(d, 'outdoor.humidity.value')) : null;
+            currentOverlay.windKmh = Number.isFinite(windSpeed) ? mphToKmh(windSpeed) : null;
+            currentOverlay.rainMm = Number.isFinite(rainRate) ? inToMm(rainRate) : null;
+            currentOverlay.lightning = Number.isFinite(parseFloat(strikes)) ? parseFloat(strikes) : null;
+
             // Setup MAC & Array Battery
             safeSetText('device-mac', CONFIG.MAC);
             const arrayBattVal = getVal(d, 'battery.sensor_array.value', null);
@@ -1233,7 +1260,17 @@
                     if (Array.isArray(ai.risks)) aiRisksEl.textContent = ai.risks.length ? ai.risks.join(', ') : 'None highlighted';
                     else aiRisksEl.textContent = ai.risks || '--';
                 }
-                if (aiStatusEl) aiStatusEl.textContent = 'AI forecast updated.';
+                if (aiStatusEl) {
+                    const warning = String(res.warning || '');
+                    const usingFallback = (res.model === 'local-fallback') || warning.includes('429');
+                    if (usingFallback) {
+                        aiStatusEl.textContent = 'AI provider is busy right now — showing local forecast fallback.';
+                    } else if (res.cached) {
+                        aiStatusEl.textContent = 'AI forecast updated (cached).';
+                    } else {
+                        aiStatusEl.textContent = 'AI forecast updated.';
+                    }
+                }
                 aiForecastLastSuccessAt = Date.now();
             } catch (err) {
                 if (aiStatusEl) aiStatusEl.textContent = 'AI forecast unavailable (check GEMINI_API_KEY / backend logs).';
@@ -1342,6 +1379,120 @@
                 `;
                 histTableBody.appendChild(tr);
             });
+
+            renderHistoricCharts();
+        }
+
+        function destroyHistoricCharts() {
+            Object.values(histCharts).forEach((chart) => {
+                if (chart) chart.destroy();
+            });
+            histCharts = {};
+        }
+
+        function buildHistoricChart(canvasId, labels, historicalData, currentVal, title, color, valueFormatter) {
+            const ctx = document.getElementById(canvasId);
+            if (!ctx) return null;
+            return new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: title,
+                            data: historicalData,
+                            borderColor: color,
+                            backgroundColor: `${color}33`,
+                            borderWidth: 2,
+                            pointRadius: 2,
+                            pointHoverRadius: 4,
+                            tension: 0.25,
+                            fill: true
+                        },
+                        {
+                            label: 'Current',
+                            data: labels.map(() => currentVal),
+                            borderColor: color,
+                            borderWidth: 4,
+                            pointRadius: 0,
+                            borderDash: [6, 4],
+                            fill: false
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { labels: { color: '#cbd5e1' } },
+                        tooltip: {
+                            callbacks: {
+                                label: (context) => `${context.dataset.label}: ${valueFormatter(context.parsed.y)}`
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: '#93c5fd', maxTicksLimit: 8 },
+                            grid: { color: 'rgba(255,255,255,0.08)' }
+                        },
+                        y: {
+                            ticks: { color: '#93c5fd' },
+                            grid: { color: 'rgba(255,255,255,0.08)' }
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderHistoricCharts() {
+            if (!rawHistData || !rawHistData.length) return;
+            destroyHistoricCharts();
+
+            const rows = [...rawHistData].reverse();
+            const labels = rows.map((r) => formatTime(r.time));
+            const tempData = rows.map((r) => {
+                const f = parseFloat(r.temp);
+                return Number.isFinite(f) ? fToC(f) : null;
+            });
+            const humData = rows.map((r) => {
+                const v = parseFloat(r.humidity);
+                return Number.isFinite(v) ? v : null;
+            });
+            const windData = rows.map((r) => {
+                const mph = parseFloat(r.wind);
+                return Number.isFinite(mph) ? mphToKmh(mph) : null;
+            });
+            const rainData = rows.map((r) => {
+                const inches = parseFloat(r.rain);
+                return Number.isFinite(inches) ? inToMm(inches) : null;
+            });
+            const lightningData = rows.map((r) => {
+                const v = parseFloat(r.lightning);
+                return Number.isFinite(v) ? v : null;
+            });
+
+            histCharts.temp = buildHistoricChart(
+                'chart-temp', labels, tempData, currentOverlay.tempC, 'Temperature', '#fb7185',
+                (v) => `${Number(v).toFixed(1)}°C`
+            );
+            histCharts.humidity = buildHistoricChart(
+                'chart-humidity', labels, humData, currentOverlay.humidity, 'Humidity', '#60a5fa',
+                (v) => `${Number(v).toFixed(1)}%`
+            );
+            histCharts.wind = buildHistoricChart(
+                'chart-wind', labels, windData, currentOverlay.windKmh, 'Wind', '#22d3ee',
+                (v) => `${Number(v).toFixed(1)} km/h`
+            );
+            histCharts.rain = buildHistoricChart(
+                'chart-rain', labels, rainData, currentOverlay.rainMm, 'Rain', '#34d399',
+                (v) => `${Number(v).toFixed(2)} mm`
+            );
+            histCharts.lightning = buildHistoricChart(
+                'chart-lightning', labels, lightningData, currentOverlay.lightning, 'Lightning Strikes', '#facc15',
+                (v) => `${Math.round(Number(v))}`
+            );
         }
 
         // Tab Events
@@ -1353,6 +1504,7 @@
             viewLive.classList.remove('hidden');
             viewHistoric.classList.add('hidden');
             refreshBtn.style.display = 'flex';
+            liveOnlySections.forEach((section) => section.classList.remove('hidden'));
         });
 
         tabHistoric.addEventListener('click', () => {
@@ -1363,6 +1515,7 @@
             viewHistoric.classList.remove('hidden');
             viewLive.classList.add('hidden');
             refreshBtn.style.display = 'none';
+            liveOnlySections.forEach((section) => section.classList.add('hidden'));
         });
 
         fetchHistBtn.addEventListener('click', fetchHistoricData);
