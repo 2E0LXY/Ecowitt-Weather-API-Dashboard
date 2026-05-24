@@ -31,6 +31,7 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
 BACKUP_LLM_PROVIDER = os.getenv("BACKUP_LLM_PROVIDER", "openrouter").strip().lower()
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini")
+OPENROUTER_MODELS = os.getenv("OPENROUTER_MODELS", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
@@ -331,7 +332,7 @@ async def call_backup_llm_forecast(context_payload):
             model_name=OPENAI_MODEL,
             provider_name="openai",
         ), OPENAI_MODEL
-    # default: openrouter
+    # default: openrouter (single model fallback)
     return await call_openai_compatible_forecast(
         context_payload=context_payload,
         base_url="https://openrouter.ai/api/v1",
@@ -339,6 +340,31 @@ async def call_backup_llm_forecast(context_payload):
         model_name=OPENROUTER_MODEL,
         provider_name="openrouter",
     ), OPENROUTER_MODEL
+
+
+async def call_openrouter_chain_forecast(context_payload):
+    models = [m.strip() for m in OPENROUTER_MODELS.split(",") if m.strip()]
+    if not models:
+        models = [OPENROUTER_MODEL]
+
+    last_error = None
+    for model_name in models:
+        try:
+            ai = await call_openai_compatible_forecast(
+                context_payload=context_payload,
+                base_url="https://openrouter.ai/api/v1",
+                api_key=OPENROUTER_API_KEY,
+                model_name=model_name,
+                provider_name="openrouter",
+            )
+            return ai, model_name
+        except HTTPException as exc:
+            last_error = exc
+            continue
+
+    if last_error:
+        raise last_error
+    raise HTTPException(status_code=502, detail="openrouter chain failed with no models configured")
 
 
 def extract_snapshot(payload):
@@ -650,7 +676,10 @@ async def api_ai_forecast():
         _ai_last_failure_ts = time.time()
         # Try backup provider before returning fallback
         try:
-            backup_ai, backup_model = await call_backup_llm_forecast(context_payload)
+            if BACKUP_LLM_PROVIDER == "openrouter":
+                backup_ai, backup_model = await call_openrouter_chain_forecast(context_payload)
+            else:
+                backup_ai, backup_model = await call_backup_llm_forecast(context_payload)
             payload = {
                 "status": "ok",
                 "model": backup_model,
