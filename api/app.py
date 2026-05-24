@@ -1,6 +1,8 @@
+import json
 import os
 import sqlite3
-import json
+import time
+from copy import deepcopy
 from datetime import datetime, timezone
 
 import httpx
@@ -29,6 +31,9 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
 
 STATIC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "static"))
 
+AI_CACHE_TTL_SECONDS = 900
+_ai_cache = {"ts": 0.0, "payload": None}
+
 
 def db_conn():
     conn = sqlite3.connect(DB_PATH)
@@ -45,17 +50,48 @@ def to_float(value):
         return None
 
 
+def f_to_c(v):
+    return (float(v) - 32.0) * 5.0 / 9.0 if v is not None else None
+
+
+def mph_to_kmh(v):
+    return float(v) * 1.60934 if v is not None else None
+
+
+def in_to_mm(v):
+    return float(v) * 25.4 if v is not None else None
+
+
+def fmt_temp_dual(f_val, digits_c=1, digits_f=1):
+    if f_val is None:
+        return "--"
+    c_val = f_to_c(f_val)
+    return f"{c_val:.{digits_c}f}°C ({float(f_val):.{digits_f}f}°F)"
+
+
+def fmt_wind_dual(mph_val, digits_kmh=1, digits_mph=1):
+    if mph_val is None:
+        return "--"
+    kmh_val = mph_to_kmh(mph_val)
+    return f"{kmh_val:.{digits_kmh}f} km/h ({float(mph_val):.{digits_mph}f} mph)"
+
+
+def fmt_rain_rate_dual(inhr_val, digits_mm=1, digits_in=2):
+    if inhr_val is None:
+        return "--"
+    mm_val = in_to_mm(inhr_val)
+    return f"{mm_val:.{digits_mm}f} mm/hr ({float(inhr_val):.{digits_in}f} in/hr)"
+
+
 def weather_comfort_score(temp_f, humidity, wind_mph, rain_rate_inhr, uv_index):
     if temp_f is None:
         return None
-
     ideal_temp = 68.0
     temp_penalty = abs(temp_f - ideal_temp) * 1.1
     humidity_penalty = 0.0 if humidity is None else abs(humidity - 50.0) * 0.4
     wind_penalty = 0.0 if wind_mph is None else max(0.0, wind_mph - 8.0) * 1.2
     rain_penalty = 0.0 if rain_rate_inhr is None else rain_rate_inhr * 10.0
     uv_penalty = 0.0 if uv_index is None else max(0.0, uv_index - 3.0) * 2.0
-
     score = 100.0 - (temp_penalty + humidity_penalty + wind_penalty + rain_penalty + uv_penalty)
     return round(max(0.0, min(100.0, score)), 2)
 
@@ -78,9 +114,7 @@ def init_db():
             )
             """
         )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_weather_snapshots_captured_at ON weather_snapshots(captured_at)"
-        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_weather_snapshots_captured_at ON weather_snapshots(captured_at)")
         conn.commit()
 
 
@@ -89,21 +123,60 @@ def normalized_mac(mac):
     if ":" in m:
         return m
     if len(m) == 12:
-        return ":".join(m[i:i+2] for i in range(0, 12, 2))
+        return ":".join(m[i:i + 2] for i in range(0, 12, 2))
     return m
+
+
+def trend_label(delta, positive_is_better):
+    if delta is None:
+        return "unknown"
+    if abs(delta) < 0.01:
+        return "steady"
+    better = delta > 0 if positive_is_better else delta < 0
+    return "better" if better else "worse"
+
+
+def local_fallback_forecast(stats_24, trend_24):
+    latest = (stats_24 or {}).get("latest", {}) if isinstance(stats_24, dict) else {}
+    summary = (stats_24 or {}).get("summary", {}) if isinstance(stats_24, dict) else {}
+    overall = (trend_24 or {}).get("overall", "steady") if isinstance(trend_24, dict) else "steady"
+
+    temp_f = latest.get("outdoor_temp_f")
+    hum = latest.get("humidity_pct")
+    wind_mph = latest.get("wind_mph")
+    rain_rate = latest.get("rain_rate_inhr")
+    uv = latest.get("uv_index")
+
+    temp_avg = (summary.get("temperature_f") or {}).get("avg")
+    hum_avg = (summary.get("humidity_pct") or {}).get("avg")
+    wind_avg = (summary.get("wind_mph") or {}).get("avg")
+    wind_max = (summary.get("wind_mph") or {}).get("max")
+
+    return {
+        "summary_24h": (
+            f"Last 24h (local DB): average temperature {fmt_temp_dual(temp_avg)}, average humidity {hum_avg}%, "
+            f"average wind {fmt_wind_dual(wind_avg)} (max {fmt_wind_dual(wind_max)})."
+        ),
+        "forecast_24h": (
+            f"Local trend outlook: {overall}. Current: {fmt_temp_dual(temp_f)}, humidity {hum}%, "
+            f"wind {fmt_wind_dual(wind_mph)}, rain rate {fmt_rain_rate_dual(rain_rate)}, UV {uv}. "
+            f"Conditions likely to remain near recent trend."
+        ),
+        "comfort_outlook": "Local fallback forecast while AI provider is temporarily unavailable or rate-limited.",
+        "risks": ["AI provider temporarily unavailable (Gemini rate-limit or network issue)."],
+        "confidence": "low",
+    }
 
 
 async def fetch_current_from_ecowitt():
     if not all([APPLICATION_KEY, API_KEY, MAC_ADDRESS]):
         raise HTTPException(status_code=500, detail="Missing APPLICATION_KEY, API_KEY or MAC_ADDRESS")
-
     params = {
         "application_key": APPLICATION_KEY,
         "api_key": API_KEY,
         "mac": normalized_mac(MAC_ADDRESS),
         "call_back": "all",
     }
-
     try:
         async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
             resp = await client.get(ECOWITT_URL, params=params)
@@ -118,14 +191,12 @@ async def fetch_current_from_ecowitt():
 
     if payload.get("code") != 0:
         raise HTTPException(status_code=502, detail=f"Ecowitt API error: {payload.get('msg', 'Unknown')}")
-
     return payload
 
 
 async def call_gemini_forecast(context_payload):
     if not GEMINI_API_KEY:
         raise HTTPException(status_code=500, detail="Missing GEMINI_API_KEY")
-
     prompt = (
         "You are a weather assistant. Use ONLY the provided weather data.\n"
         "Task:\n"
@@ -133,17 +204,12 @@ async def call_gemini_forecast(context_payload):
         "2) Give a practical next-24-hours forecast based on trend extrapolation.\n"
         "3) Mention confidence level (low/medium/high) and why.\n"
         "4) Return strict JSON with keys: summary_24h, forecast_24h, comfort_outlook, risks, confidence.\n"
-        "5) Use metric-first units with imperial in brackets, e.g. 26.0°C (78.8°F), 12.3 km/h (7.6 mph), 1014 hPa (29.94 inHg), 3.2 mm (0.13 in).\n"
+        "5) Use metric-first units with imperial in brackets.\n"
         "Keep text concise and plain English for a dashboard.\n\n"
         f"DATA:\n{json.dumps(context_payload, ensure_ascii=True)}"
     )
-
-    url = (
-        f"https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
-    )
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
     body = {"contents": [{"parts": [{"text": prompt}]}]}
-
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(url, json=body)
@@ -165,17 +231,13 @@ async def call_gemini_forecast(context_payload):
     )
     if not text:
         raise HTTPException(status_code=502, detail="Gemini returned empty response")
-
-    # Accept either raw JSON or fenced JSON.
     cleaned = text.strip()
     if cleaned.startswith("```"):
         cleaned = cleaned.strip("`")
         cleaned = cleaned.replace("json", "", 1).strip()
-
     try:
         return json.loads(cleaned)
     except ValueError:
-        # Fallback: return plain text in expected shape.
         return {
             "summary_24h": text,
             "forecast_24h": "Forecast parsing fallback. Review model output format.",
@@ -202,7 +264,6 @@ def extract_snapshot(payload):
     wind = to_float(get("wind", "wind_speed", "value"))
     rain_rate = to_float(get("rainfall", "rain_rate", "value"))
     uv = to_float(get("solar_and_uvi", "uvi", "value"))
-
     return {
         "outdoor_temp_f": temp_f,
         "humidity_pct": humidity,
@@ -239,15 +300,6 @@ def save_snapshot(snapshot):
     return captured_at
 
 
-def trend_label(delta, positive_is_better):
-    if delta is None:
-        return "unknown"
-    if abs(delta) < 0.01:
-        return "steady"
-    better = delta > 0 if positive_is_better else delta < 0
-    return "better" if better else "worse"
-
-
 @app.on_event("startup")
 async def on_startup():
     init_db()
@@ -270,7 +322,6 @@ async def api_current(save: bool = False):
 
 @app.post("/api/snapshot")
 async def api_snapshot():
-    # Keep endpoint for compatibility, but this still performs one fresh fetch.
     payload = await fetch_current_from_ecowitt()
     snapshot = extract_snapshot(payload)
     captured_at = save_snapshot(snapshot)
@@ -281,7 +332,6 @@ async def api_snapshot():
 async def api_trend(hours: int = 6):
     if hours < 1 or hours > 168:
         raise HTTPException(status_code=400, detail="hours must be between 1 and 168")
-
     with db_conn() as conn:
         rows = conn.execute(
             """
@@ -293,7 +343,6 @@ async def api_trend(hours: int = 6):
             """,
             (f"-{hours} hours",),
         ).fetchall()
-
     if len(rows) < 2:
         return {"status": "insufficient_data", "message": "Need at least 2 snapshots"}
 
@@ -334,7 +383,6 @@ async def api_trend(hours: int = 6):
 async def api_snapshots(limit: int = 100):
     if limit < 1 or limit > 1000:
         raise HTTPException(status_code=400, detail="limit must be 1..1000")
-
     with db_conn() as conn:
         rows = conn.execute(
             """
@@ -346,7 +394,6 @@ async def api_snapshots(limit: int = 100):
             """,
             (limit,),
         ).fetchall()
-
     return {"status": "ok", "items": [dict(r) for r in rows]}
 
 
@@ -354,7 +401,6 @@ async def api_snapshots(limit: int = 100):
 async def api_stats(hours: int = 24):
     if hours < 1 or hours > 720:
         raise HTTPException(status_code=400, detail="hours must be between 1 and 720")
-
     with db_conn() as conn:
         agg = conn.execute(
             """
@@ -415,9 +461,7 @@ async def api_stats(hours: int = 24):
                 "max": round_or_none(agg["humidity_max"], 1),
                 "avg": round_or_none(agg["humidity_avg"], 1),
             },
-            "pressure_inhg": {
-                "avg": round_or_none(agg["pressure_avg_inhg"], 3),
-            },
+            "pressure_inhg": {"avg": round_or_none(agg["pressure_avg_inhg"], 3)},
             "wind_mph": {
                 "max": round_or_none(agg["wind_max_mph"], 2),
                 "avg": round_or_none(agg["wind_avg_mph"], 2),
@@ -430,9 +474,15 @@ async def api_stats(hours: int = 24):
 
 @app.get("/api/ai-forecast")
 async def api_ai_forecast():
-    # Build context from last 24h stats + trend + current
-    current = await fetch_current_from_ecowitt()
+    now = time.time()
 
+    if _ai_cache["payload"] and (now - _ai_cache["ts"] < AI_CACHE_TTL_SECONDS):
+        cached = deepcopy(_ai_cache["payload"])
+        cached["cached"] = True
+        cached["cache_age_seconds"] = int(now - _ai_cache["ts"])
+        return cached
+
+    current = await fetch_current_from_ecowitt()
     stats_24 = await api_stats(hours=24)
     trend_24 = await api_trend(hours=24)
 
@@ -448,18 +498,16 @@ async def api_ai_forecast():
             """
         ).fetchall()
 
-    compact_points = []
-    for r in points:
-        compact_points.append({
-            "t": r["captured_at"],
-            "temp_f": r["outdoor_temp_f"],
-            "hum_pct": r["humidity_pct"],
-            "pressure_inhg": r["pressure_inhg"],
-            "wind_mph": r["wind_mph"],
-            "rain_rate_inhr": r["rain_rate_inhr"],
-            "uv": r["uv_index"],
-            "comfort": r["comfort_score"],
-        })
+    compact_points = [{
+        "t": r["captured_at"],
+        "temp_f": r["outdoor_temp_f"],
+        "hum_pct": r["humidity_pct"],
+        "pressure_inhg": r["pressure_inhg"],
+        "wind_mph": r["wind_mph"],
+        "rain_rate_inhr": r["rain_rate_inhr"],
+        "uv": r["uv_index"],
+        "comfort": r["comfort_score"],
+    } for r in points]
 
     context_payload = {
         "current": current.get("data", {}),
@@ -469,13 +517,63 @@ async def api_ai_forecast():
         "timezone_hint": "Europe/London",
     }
 
-    ai = await call_gemini_forecast(context_payload)
-    return {
-        "status": "ok",
-        "model": GEMINI_MODEL,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "ai_forecast": ai,
-    }
+    try:
+        ai = await call_gemini_forecast(context_payload)
+        payload = {
+            "status": "ok",
+            "model": GEMINI_MODEL,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "ai_forecast": ai,
+            "cached": False,
+            "cache_age_seconds": 0,
+        }
+        _ai_cache["payload"] = deepcopy(payload)
+        _ai_cache["ts"] = time.time()
+        return payload
+
+    except HTTPException as exc:
+        if _ai_cache["payload"]:
+            stale = deepcopy(_ai_cache["payload"])
+            stale["cached"] = True
+            stale["stale"] = True
+            stale["cache_age_seconds"] = int(now - _ai_cache["ts"])
+            stale["warning"] = exc.detail
+            return stale
+
+        payload = {
+            "status": "ok",
+            "model": "local-fallback",
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "ai_forecast": local_fallback_forecast(stats_24, trend_24),
+            "cached": False,
+            "cache_age_seconds": 0,
+            "warning": exc.detail,
+        }
+        _ai_cache["payload"] = deepcopy(payload)
+        _ai_cache["ts"] = time.time()
+        return payload
+
+    except Exception as exc:
+        if _ai_cache["payload"]:
+            stale = deepcopy(_ai_cache["payload"])
+            stale["cached"] = True
+            stale["stale"] = True
+            stale["cache_age_seconds"] = int(now - _ai_cache["ts"])
+            stale["warning"] = f"Unexpected AI error: {exc}"
+            return stale
+
+        payload = {
+            "status": "ok",
+            "model": "local-fallback",
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "ai_forecast": local_fallback_forecast(stats_24, trend_24),
+            "cached": False,
+            "cache_age_seconds": 0,
+            "warning": f"Unexpected AI error: {exc}",
+        }
+        _ai_cache["payload"] = deepcopy(payload)
+        _ai_cache["ts"] = time.time()
+        return payload
 
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
