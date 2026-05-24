@@ -33,6 +33,8 @@ STATIC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "stat
 
 AI_CACHE_TTL_SECONDS = 900
 _ai_cache = {"ts": 0.0, "payload": None}
+AI_RETRY_COOLDOWN_SECONDS = 600
+_ai_last_failure_ts = 0.0
 
 
 def db_conn():
@@ -474,6 +476,7 @@ async def api_stats(hours: int = 24):
 
 @app.get("/api/ai-forecast")
 async def api_ai_forecast():
+    global _ai_last_failure_ts
     now = time.time()
 
     if _ai_cache["payload"] and (now - _ai_cache["ts"] < AI_CACHE_TTL_SECONDS):
@@ -517,8 +520,28 @@ async def api_ai_forecast():
         "timezone_hint": "Europe/London",
     }
 
+    in_retry_cooldown = _ai_last_failure_ts > 0 and (now - _ai_last_failure_ts) < AI_RETRY_COOLDOWN_SECONDS
+
+    if in_retry_cooldown:
+        payload = {
+            "status": "ok",
+            "model": "local-fallback",
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "ai_forecast": local_fallback_forecast(stats_24, trend_24),
+            "cached": False,
+            "cache_age_seconds": 0,
+            "warning": (
+                f"AI retry cooldown active ({int(AI_RETRY_COOLDOWN_SECONDS - (now - _ai_last_failure_ts))}s remaining) "
+                "after previous Gemini failure."
+            ),
+        }
+        _ai_cache["payload"] = deepcopy(payload)
+        _ai_cache["ts"] = time.time()
+        return payload
+
     try:
         ai = await call_gemini_forecast(context_payload)
+        _ai_last_failure_ts = 0.0
         payload = {
             "status": "ok",
             "model": GEMINI_MODEL,
@@ -532,6 +555,7 @@ async def api_ai_forecast():
         return payload
 
     except HTTPException as exc:
+        _ai_last_failure_ts = time.time()
         if _ai_cache["payload"]:
             stale = deepcopy(_ai_cache["payload"])
             stale["cached"] = True
@@ -554,6 +578,7 @@ async def api_ai_forecast():
         return payload
 
     except Exception as exc:
+        _ai_last_failure_ts = time.time()
         if _ai_cache["payload"]:
             stale = deepcopy(_ai_cache["payload"])
             stale["cached"] = True
