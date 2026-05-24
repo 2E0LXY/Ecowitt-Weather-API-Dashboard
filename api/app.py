@@ -28,6 +28,11 @@ ECOWITT_URL = os.getenv("ECOWITT_URL", "https://api.ecowitt.net/api/v3/device/re
 DB_PATH = os.getenv("WEATHER_DB_PATH", os.path.join(os.path.dirname(__file__), "..", "data", "weather_data.db"))
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
+BACKUP_LLM_PROVIDER = os.getenv("BACKUP_LLM_PROVIDER", "openrouter").strip().lower()
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
 STATIC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "static"))
 
@@ -247,6 +252,93 @@ async def call_gemini_forecast(context_payload):
             "risks": [],
             "confidence": "low",
         }
+
+
+async def call_openai_compatible_forecast(context_payload, base_url, api_key, model_name, provider_name):
+    if not api_key:
+        raise HTTPException(status_code=500, detail=f"Missing {provider_name} API key")
+
+    prompt = (
+        "You are a weather assistant. Use ONLY the provided weather data.\n"
+        "Task:\n"
+        "1) Summarize what weather has done over the last 24 hours.\n"
+        "2) Give a practical next-24-hours forecast based on trend extrapolation.\n"
+        "3) Mention confidence level (low/medium/high) and why.\n"
+        "4) Return strict JSON with keys: summary_24h, forecast_24h, comfort_outlook, risks, confidence.\n"
+        "5) Use metric-first units with imperial in brackets.\n"
+        "Keep text concise and plain English for a dashboard.\n\n"
+        f"DATA:\n{json.dumps(context_payload, ensure_ascii=True)}"
+    )
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    if provider_name == "openrouter":
+        headers["HTTP-Referer"] = "https://2e0lxy.uk/weather-dashboard"
+        headers["X-Title"] = "Ecowitt Weather Dashboard"
+
+    body = {
+        "model": model_name,
+        "messages": [
+            {"role": "system", "content": "You generate concise structured weather forecast JSON."},
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0.4,
+        "response_format": {"type": "json_object"},
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(f"{base_url}/chat/completions", headers=headers, json=body)
+            resp.raise_for_status()
+            payload = resp.json()
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(status_code=502, detail=f"{provider_name} HTTP error {exc.response.status_code}") from exc
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail=f"{provider_name} request error: {exc}") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail=f"{provider_name} returned invalid JSON") from exc
+
+    content = ""
+    try:
+        content = payload["choices"][0]["message"]["content"].strip()
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"{provider_name} response parse error") from exc
+
+    if not content:
+        raise HTTPException(status_code=502, detail=f"{provider_name} returned empty response")
+
+    try:
+        return json.loads(content)
+    except ValueError:
+        return {
+            "summary_24h": content,
+            "forecast_24h": "Forecast parsing fallback. Review model output format.",
+            "comfort_outlook": "unknown",
+            "risks": [],
+            "confidence": "low",
+        }
+
+
+async def call_backup_llm_forecast(context_payload):
+    provider = BACKUP_LLM_PROVIDER
+    if provider == "openai":
+        return await call_openai_compatible_forecast(
+            context_payload=context_payload,
+            base_url="https://api.openai.com/v1",
+            api_key=OPENAI_API_KEY,
+            model_name=OPENAI_MODEL,
+            provider_name="openai",
+        ), OPENAI_MODEL
+    # default: openrouter
+    return await call_openai_compatible_forecast(
+        context_payload=context_payload,
+        base_url="https://openrouter.ai/api/v1",
+        api_key=OPENROUTER_API_KEY,
+        model_name=OPENROUTER_MODEL,
+        provider_name="openrouter",
+    ), OPENROUTER_MODEL
 
 
 def extract_snapshot(payload):
@@ -556,13 +648,29 @@ async def api_ai_forecast():
 
     except HTTPException as exc:
         _ai_last_failure_ts = time.time()
-        if _ai_cache["payload"]:
-            stale = deepcopy(_ai_cache["payload"])
-            stale["cached"] = True
-            stale["stale"] = True
-            stale["cache_age_seconds"] = int(now - _ai_cache["ts"])
-            stale["warning"] = exc.detail
-            return stale
+        # Try backup provider before returning fallback
+        try:
+            backup_ai, backup_model = await call_backup_llm_forecast(context_payload)
+            payload = {
+                "status": "ok",
+                "model": backup_model,
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "ai_forecast": backup_ai,
+                "cached": False,
+                "cache_age_seconds": 0,
+                "warning": f"Primary unavailable: {exc.detail}. Served by backup provider.",
+            }
+            _ai_cache["payload"] = deepcopy(payload)
+            _ai_cache["ts"] = time.time()
+            return payload
+        except HTTPException as backup_exc:
+            if _ai_cache["payload"]:
+                stale = deepcopy(_ai_cache["payload"])
+                stale["cached"] = True
+                stale["stale"] = True
+                stale["cache_age_seconds"] = int(now - _ai_cache["ts"])
+                stale["warning"] = f"Primary failed ({exc.detail}); backup failed ({backup_exc.detail})"
+                return stale
 
         payload = {
             "status": "ok",
@@ -571,7 +679,7 @@ async def api_ai_forecast():
             "ai_forecast": local_fallback_forecast(stats_24, trend_24),
             "cached": False,
             "cache_age_seconds": 0,
-            "warning": exc.detail,
+            "warning": f"Primary failed ({exc.detail}) and no backup response available.",
         }
         _ai_cache["payload"] = deepcopy(payload)
         _ai_cache["ts"] = time.time()
