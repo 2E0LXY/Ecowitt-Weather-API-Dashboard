@@ -1,0 +1,7 @@
+api/.env
+api/.venv/
+venv/
+__pycache__/
+*.pyc
+data/weather_data.db
+data/*.db
