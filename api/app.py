@@ -286,8 +286,11 @@ async def call_openai_compatible_forecast(context_payload, base_url, api_key, mo
             {"role": "user", "content": prompt},
         ],
         "temperature": 0.4,
-        "response_format": {"type": "json_object"},
     }
+    # Some OpenRouter/free models reject response_format=json_object.
+    # Keep it for OpenAI; omit for OpenRouter compatibility.
+    if provider_name != "openrouter":
+        body["response_format"] = {"type": "json_object"}
 
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -708,7 +711,7 @@ async def api_ai_forecast():
             "ai_forecast": local_fallback_forecast(stats_24, trend_24),
             "cached": False,
             "cache_age_seconds": 0,
-            "warning": f"Primary failed ({exc.detail}) and no backup response available.",
+            "warning": f"Primary failed ({exc.detail}) and backup failed ({backup_exc.detail}).",
         }
         _ai_cache["payload"] = deepcopy(payload)
         _ai_cache["ts"] = time.time()
