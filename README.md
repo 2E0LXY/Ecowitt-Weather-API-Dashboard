@@ -67,6 +67,11 @@ Edit `.env` and fill:
 - `WEATHER_DB_PATH=../data/weather_data.db` (or absolute path on VPS)
 - `GEMINI_API_KEY=...` (optional)
 - `GEMINI_MODEL=gemini-2.5-flash-lite` (optional)
+- `BACKUP_LLM_PROVIDER=openrouter` (or `openai`)
+- `OPENROUTER_API_KEY=...` (recommended backup)
+- `OPENROUTER_MODEL=openai/gpt-4o-mini`
+- `OPENAI_API_KEY=...` (optional alternative backup)
+- `OPENAI_MODEL=gpt-4o-mini`
 
 ## 4) Run locally
 
@@ -103,6 +108,15 @@ Open:
 - `GET /api/stats?hours=24` 24h DB stats
 - `GET /api/snapshots?limit=100` recent snapshots
 - `GET /api/ai-forecast` AI text summary using DB + current data
+
+## AI failover behavior
+
+The AI endpoint uses provider failover:
+1. Primary: Gemini (`GEMINI_API_KEY`)
+2. Backup: OpenRouter or OpenAI (based on `BACKUP_LLM_PROVIDER`)
+3. Final fallback: local DB-generated forecast text
+
+If Gemini quota is exhausted, the app will automatically try the backup provider before falling back locally.
 
 ## 6) Recommended production setup (VPS)
 
