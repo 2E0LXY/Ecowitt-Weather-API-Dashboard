@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import re
@@ -38,6 +39,10 @@ OPENROUTER_MODELS = os.getenv("OPENROUTER_MODELS", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 SATELLITE_BASE_URL = os.getenv("SATELLITE_BASE_URL", "http://zx3de49.glddns.com:8080")
+SATELLITE_AI_IMAGES_ENABLED = os.getenv("SATELLITE_AI_IMAGES_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+SATELLITE_AI_IMAGE_ENHANCEMENT = os.getenv("SATELLITE_AI_IMAGE_ENHANCEMENT", "equidistant_221_composite")
+SATELLITE_AI_IMAGE_COUNT = max(0, min(4, int(os.getenv("SATELLITE_AI_IMAGE_COUNT", "2"))))
+SATELLITE_AI_MAX_IMAGE_BYTES = int(os.getenv("SATELLITE_AI_MAX_IMAGE_BYTES", str(8 * 1024 * 1024)))
 
 STATIC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "static"))
 
@@ -208,24 +213,35 @@ async def fetch_current_from_ecowitt():
     return payload
 
 
-async def call_gemini_forecast(context_payload):
+async def call_gemini_forecast(context_payload, satellite_ai_images=None):
     if not GEMINI_API_KEY:
         raise HTTPException(status_code=500, detail="Missing GEMINI_API_KEY")
+    satellite_ai_images = satellite_ai_images or []
     prompt = (
         "You are a weather assistant. Use ONLY the provided weather data.\n"
         "Task:\n"
         "1) Summarize what weather has done over the last 24 hours.\n"
-        "2) Give a practical next-24-hours forecast based on trend extrapolation.\n"
+        "2) Give a practical next-24-hours forecast based on trend extrapolation and any attached METEOR satellite images.\n"
         "3) Mention confidence level (low/medium/high) and why.\n"
         "4) Return strict JSON with keys: summary_24h, forecast_24h, comfort_outlook, risks, confidence.\n"
         "5) Use metric-first units with imperial in brackets.\n"
+        "If satellite images are attached, compare them chronologically. Use visible cloud cover, clearing, frontal bands, "
+        "and cloud movement to improve the forecast description, but do not invent precise model data.\n"
         "Keep text concise and plain English for a dashboard.\n\n"
         f"DATA:\n{json.dumps(context_payload, ensure_ascii=True)}"
     )
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
-    body = {"contents": [{"parts": [{"text": prompt}]}]}
+    parts = [{"text": prompt}]
+    for item in satellite_ai_images:
+        parts.append({
+            "inline_data": {
+                "mime_type": item["mime_type"],
+                "data": item["base64"],
+            }
+        })
+    body = {"contents": [{"parts": parts}]}
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=90.0) as client:
             resp = await client.post(url, json=body)
             resp.raise_for_status()
             payload = resp.json()
@@ -495,6 +511,17 @@ def choose_satellite_image(images):
     return images[0]
 
 
+def choose_satellite_image_by_enhancement(images, enhancement):
+    if not images:
+        return None
+    wanted = (enhancement or "").strip()
+    if wanted:
+        for image in images:
+            if image.get("enhancement") == wanted or wanted in image.get("filename", ""):
+                return image
+    return choose_satellite_image(images)
+
+
 async def fetch_latest_satellite_payload(force=False):
     now = time.time()
     if not force and _satellite_cache["payload"] and (now - _satellite_cache["ts"] < SATELLITE_CACHE_TTL_SECONDS):
@@ -539,6 +566,46 @@ async def fetch_latest_satellite_payload(force=False):
     _satellite_cache["payload"] = deepcopy(payload)
     _satellite_cache["ts"] = time.time()
     return payload
+
+
+async def fetch_satellite_ai_images():
+    if not SATELLITE_AI_IMAGES_ENABLED or SATELLITE_AI_IMAGE_COUNT <= 0:
+        return []
+
+    ai_images = []
+    async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
+        captures_resp = await client.get(satellite_absolute_url("/captures?page_no=1"))
+        captures_resp.raise_for_status()
+        capture_cards = parse_capture_cards(captures_resp.text)
+
+        for capture in capture_cards:
+            if len(ai_images) >= SATELLITE_AI_IMAGE_COUNT:
+                break
+
+            detail_resp = await client.get(satellite_absolute_url(capture["detail_path"]))
+            detail_resp.raise_for_status()
+            images = parse_capture_images(detail_resp.text)
+            chosen = choose_satellite_image_by_enhancement(images, SATELLITE_AI_IMAGE_ENHANCEMENT)
+            if not chosen:
+                continue
+
+            image_resp = await client.get(chosen["url"])
+            image_resp.raise_for_status()
+            content = image_resp.content
+            if len(content) > SATELLITE_AI_MAX_IMAGE_BYTES:
+                continue
+
+            mime_type = image_resp.headers.get("content-type", "image/jpeg").split(";", 1)[0].strip()
+            ai_images.append({
+                "capture": capture,
+                "image": chosen,
+                "mime_type": mime_type,
+                "bytes": content,
+                "size_bytes": len(content),
+                "base64": base64.b64encode(content).decode("ascii"),
+            })
+
+    return list(reversed(ai_images))
 
 
 @app.on_event("startup")
@@ -806,8 +873,31 @@ async def api_ai_forecast():
         _ai_cache["ts"] = time.time()
         return payload
 
+    satellite_ai_images = []
     try:
-        ai = await call_gemini_forecast(context_payload)
+        satellite_ai_images = await fetch_satellite_ai_images()
+        if satellite_ai_images:
+            context_payload["satellite_images"] = [
+                {
+                    "satellite": item["capture"].get("satellite"),
+                    "pass_start": item["capture"].get("pass_start"),
+                    "direction": item["capture"].get("direction"),
+                    "elevation": item["capture"].get("elevation"),
+                    "enhancement": item["image"].get("enhancement"),
+                    "filename": item["image"].get("filename"),
+                    "size_bytes": item["size_bytes"],
+                    "attached_to_gemini": True,
+                }
+                for item in satellite_ai_images
+            ]
+    except Exception as exc:
+        context_payload["satellite_images"] = {
+            "attached_to_gemini": False,
+            "error": str(exc),
+        }
+
+    try:
+        ai = await call_gemini_forecast(context_payload, satellite_ai_images=satellite_ai_images)
         _ai_last_failure_ts = 0.0
         payload = {
             "status": "ok",
@@ -816,6 +906,7 @@ async def api_ai_forecast():
             "ai_forecast": ai,
             "cached": False,
             "cache_age_seconds": 0,
+            "satellite_images_used": len(satellite_ai_images),
         }
         _ai_cache["payload"] = deepcopy(payload)
         _ai_cache["ts"] = time.time()

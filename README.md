@@ -68,6 +68,9 @@ Edit `.env` and fill:
 - `OPENROUTER_API_KEY=...` (recommended backup)
 - `OPENROUTER_MODEL=openai/gpt-4o-mini`
 - `SATELLITE_BASE_URL=http://zx3de49.glddns.com:8080`
+- `SATELLITE_AI_IMAGES_ENABLED=true`
+- `SATELLITE_AI_IMAGE_ENHANCEMENT=equidistant_221_composite`
+- `SATELLITE_AI_IMAGE_COUNT=2`
 - `OPENAI_API_KEY=...` (optional alternative backup)
 - `OPENAI_MODEL=gpt-4o-mini`
 
@@ -117,6 +120,8 @@ The AI endpoint uses provider failover:
 3. Final fallback: local DB-generated forecast text
 
 If Gemini quota is exhausted, the app will automatically try the backup provider before falling back locally.
+
+When `SATELLITE_AI_IMAGES_ENABLED=true`, Gemini also receives the latest two matching METEOR images as visual context. Backup providers receive the image metadata only.
 
 ## 6) Recommended production setup (VPS)
 
