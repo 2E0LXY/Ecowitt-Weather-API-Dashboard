@@ -153,7 +153,7 @@
             border: 1px solid rgba(147, 197, 253, 0.22);
             border-radius: 1rem;
             overflow: hidden;
-            min-height: 280px;
+            min-height: 220px;
         }
 
         .satellite-frame img {
@@ -163,6 +163,27 @@
             max-height: 760px;
             object-fit: contain;
             background: #020617;
+        }
+
+        .satellite-image-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 14px;
+        }
+
+        @media (min-width: 768px) {
+            .satellite-image-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+
+        .satellite-caption {
+            border-top: 1px solid rgba(147, 197, 253, 0.18);
+            background: rgba(15, 23, 42, 0.78);
+            color: #bfdbfe;
+            font-size: 0.78rem;
+            font-weight: 600;
+            padding: 8px 10px;
         }
 
         .satellite-meta {
@@ -280,44 +301,6 @@
             </div>
         </section>
 
-        <section class="glass-card p-5 mb-6 live-only">
-            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
-                <div>
-                    <h2 class="text-sm font-semibold text-blue-200 uppercase tracking-wider flex items-center gap-2">
-                        <i class="ph ph-satellite"></i> Latest METEOR Satellite Image
-                    </h2>
-                    <p id="satellite-status" class="text-sm text-blue-200 mt-1">Loading latest satellite capture...</p>
-                </div>
-                <button id="satellite-refresh-btn" class="self-start md:self-auto flex items-center gap-2 bg-sky-600 hover:bg-sky-500 text-white px-3 py-2 rounded-full text-sm font-semibold transition-colors">
-                    <i class="ph-bold ph-arrows-clockwise"></i>
-                    Refresh Image
-                </button>
-            </div>
-            <div class="satellite-meta mb-4 text-sm">
-                <div class="rounded-lg bg-white/5 border border-white/10 p-3">
-                    <p class="text-blue-200 text-xs">Satellite</p>
-                    <p id="satellite-name" class="font-semibold">--</p>
-                </div>
-                <div class="rounded-lg bg-white/5 border border-white/10 p-3">
-                    <p class="text-blue-200 text-xs">Pass Start</p>
-                    <p id="satellite-pass-start" class="font-semibold">--</p>
-                </div>
-                <div class="rounded-lg bg-white/5 border border-white/10 p-3">
-                    <p class="text-blue-200 text-xs">Direction</p>
-                    <p id="satellite-direction" class="font-semibold">--</p>
-                </div>
-                <div class="rounded-lg bg-white/5 border border-white/10 p-3">
-                    <p class="text-blue-200 text-xs">Enhancement</p>
-                    <p id="satellite-enhancement" class="font-semibold">--</p>
-                </div>
-            </div>
-            <div class="satellite-frame">
-                <a id="satellite-link" href="#" target="_blank" rel="noopener">
-                    <img id="satellite-image" alt="Latest METEOR satellite capture" loading="lazy">
-                </a>
-            </div>
-        </section>
-
         <div id="view-live">
             <main class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
                 
@@ -411,6 +394,53 @@
                             </div>
                         </div>
                     </div>
+
+                    <section class="glass-card p-5">
+                        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+                            <div>
+                                <h2 class="text-lg font-semibold text-blue-200 flex items-center gap-2">
+                                    <i class="ph ph-satellite"></i> Latest METEOR Satellite Images
+                                </h2>
+                                <p id="satellite-status" class="text-sm text-blue-200 mt-1">Loading latest satellite capture...</p>
+                            </div>
+                            <button id="satellite-refresh-btn" class="self-start md:self-auto flex items-center gap-2 bg-sky-600 hover:bg-sky-500 text-white px-3 py-2 rounded-full text-sm font-semibold transition-colors">
+                                <i class="ph-bold ph-arrows-clockwise"></i>
+                                Refresh Images
+                            </button>
+                        </div>
+                        <div class="satellite-meta mb-4 text-sm">
+                            <div class="rounded-lg bg-white/5 border border-white/10 p-3">
+                                <p class="text-blue-200 text-xs">Satellite</p>
+                                <p id="satellite-name" class="font-semibold">--</p>
+                            </div>
+                            <div class="rounded-lg bg-white/5 border border-white/10 p-3">
+                                <p class="text-blue-200 text-xs">Pass Start</p>
+                                <p id="satellite-pass-start" class="font-semibold">--</p>
+                            </div>
+                            <div class="rounded-lg bg-white/5 border border-white/10 p-3">
+                                <p class="text-blue-200 text-xs">Direction</p>
+                                <p id="satellite-direction" class="font-semibold">--</p>
+                            </div>
+                            <div class="rounded-lg bg-white/5 border border-white/10 p-3">
+                                <p class="text-blue-200 text-xs">Enhancements</p>
+                                <p id="satellite-enhancement" class="font-semibold">--</p>
+                            </div>
+                        </div>
+                        <div class="satellite-image-grid">
+                            <div class="satellite-frame">
+                                <a id="satellite-link-primary" href="#" target="_blank" rel="noopener">
+                                    <img id="satellite-image-primary" alt="Latest METEOR primary satellite capture" loading="lazy">
+                                </a>
+                                <div id="satellite-caption-primary" class="satellite-caption">--</div>
+                            </div>
+                            <div class="satellite-frame">
+                                <a id="satellite-link-secondary" href="#" target="_blank" rel="noopener">
+                                    <img id="satellite-image-secondary" alt="Latest METEOR secondary satellite capture" loading="lazy">
+                                </a>
+                                <div id="satellite-caption-secondary" class="satellite-caption">--</div>
+                            </div>
+                        </div>
+                    </section>
                 </div>
 
                 <!-- Right Column (Sensors) -->
@@ -651,8 +681,12 @@
         const satellitePassStartEl = document.getElementById('satellite-pass-start');
         const satelliteDirectionEl = document.getElementById('satellite-direction');
         const satelliteEnhancementEl = document.getElementById('satellite-enhancement');
-        const satelliteImageEl = document.getElementById('satellite-image');
-        const satelliteLinkEl = document.getElementById('satellite-link');
+        const satelliteImagePrimaryEl = document.getElementById('satellite-image-primary');
+        const satelliteImageSecondaryEl = document.getElementById('satellite-image-secondary');
+        const satelliteLinkPrimaryEl = document.getElementById('satellite-link-primary');
+        const satelliteLinkSecondaryEl = document.getElementById('satellite-link-secondary');
+        const satelliteCaptionPrimaryEl = document.getElementById('satellite-caption-primary');
+        const satelliteCaptionSecondaryEl = document.getElementById('satellite-caption-secondary');
         const satelliteRefreshBtn = document.getElementById('satellite-refresh-btn');
         const liveOnlySections = document.querySelectorAll('.live-only');
         
@@ -1367,15 +1401,40 @@
 
                 const capture = res.capture || {};
                 const image = res.image || {};
+                const allImages = Array.isArray(res.images) ? res.images : [];
+                const pickImage = (needle, fallback = null) => {
+                    return allImages.find((item) => item.filename && item.filename.includes(needle)) || fallback;
+                };
+                const primaryImage = image.proxy_url
+                    ? image
+                    : pickImage('equidistant_221_composite', allImages[0] || {});
+                const secondaryImage = pickImage('equidistant_321_composite')
+                    || allImages.find((item) => item.filename !== primaryImage.filename)
+                    || primaryImage;
+
                 if (satelliteNameEl) satelliteNameEl.textContent = capture.satellite || '--';
                 if (satellitePassStartEl) satellitePassStartEl.textContent = capture.pass_start || '--';
                 if (satelliteDirectionEl) satelliteDirectionEl.textContent = capture.direction || '--';
-                if (satelliteEnhancementEl) satelliteEnhancementEl.textContent = image.enhancement || '--';
-                if (satelliteImageEl && image.proxy_url) {
-                    satelliteImageEl.src = image.proxy_url;
-                    satelliteImageEl.alt = `${capture.satellite || 'METEOR'} ${image.enhancement || 'satellite image'}`;
+                if (satelliteEnhancementEl) {
+                    const names = [primaryImage.enhancement, secondaryImage.enhancement].filter(Boolean);
+                    satelliteEnhancementEl.textContent = names.length ? [...new Set(names)].join(' / ') : '--';
                 }
-                if (satelliteLinkEl && image.url) satelliteLinkEl.href = image.url;
+                if (satelliteImagePrimaryEl && primaryImage.proxy_url) {
+                    satelliteImagePrimaryEl.src = primaryImage.proxy_url;
+                    satelliteImagePrimaryEl.alt = `${capture.satellite || 'METEOR'} ${primaryImage.enhancement || 'primary satellite image'}`;
+                }
+                if (satelliteImageSecondaryEl && secondaryImage.proxy_url) {
+                    satelliteImageSecondaryEl.src = secondaryImage.proxy_url;
+                    satelliteImageSecondaryEl.alt = `${capture.satellite || 'METEOR'} ${secondaryImage.enhancement || 'secondary satellite image'}`;
+                }
+                if (satelliteLinkPrimaryEl && primaryImage.url) satelliteLinkPrimaryEl.href = primaryImage.url;
+                if (satelliteLinkSecondaryEl && secondaryImage.url) satelliteLinkSecondaryEl.href = secondaryImage.url;
+                if (satelliteCaptionPrimaryEl) {
+                    satelliteCaptionPrimaryEl.textContent = primaryImage.enhancement || primaryImage.filename || '--';
+                }
+                if (satelliteCaptionSecondaryEl) {
+                    satelliteCaptionSecondaryEl.textContent = secondaryImage.enhancement || secondaryImage.filename || '--';
+                }
                 if (satelliteStatusEl) {
                     satelliteStatusEl.textContent = res.cached
                         ? 'Latest satellite capture loaded (cached).'
