@@ -378,23 +378,6 @@
                         </div>
                     </div>
 
-                    <!-- Indoor Card -->
-                    <div class="glass-card p-6 flex flex-col">
-                        <h2 class="text-lg font-semibold text-blue-200 mb-4 flex items-center gap-2"><i class="ph ph-house"></i> Indoor</h2>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                            <div>
-                                <p class="text-sm text-blue-200 mb-1">Temperature</p>
-                                <p class="text-4xl font-bold"><span id="in-temp">--</span> <span class="text-xl text-blue-300 font-medium temp-unit-small">°F</span></p>
-                                <div id="scale-in-temp" class="flex gap-0.5 mt-3 h-2 w-full"></div>
-                            </div>
-                            <div>
-                                <p class="text-sm text-blue-200 mb-1">Humidity</p>
-                                <p class="text-4xl font-bold"><span id="in-hum">--</span>%</p>
-                                <div id="scale-in-hum" class="flex gap-0.5 mt-3 h-2 w-full"></div>
-                            </div>
-                        </div>
-                    </div>
-
                     <section class="glass-card p-5">
                         <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
                             <div>
@@ -538,6 +521,28 @@
                             <div>
                                 <p class="text-sm text-blue-200 mb-1">This Month</p>
                                 <p class="font-semibold text-blue-100"><span id="rain-monthly">--</span> <span class="rain-unit-small">in</span></p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Indoor Card -->
+                    <div class="glass-card p-5">
+                        <h2 class="text-lg font-semibold text-blue-200 mb-4 flex items-center gap-2">
+                            <i class="ph ph-house"></i> Indoor
+                        </h2>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <p class="text-sm text-blue-200 mb-1">Temperature</p>
+                                <p class="text-3xl font-bold">
+                                    <span id="in-temp">--</span>
+                                    <span class="text-sm text-blue-300 font-medium temp-unit-small">°F</span>
+                                </p>
+                                <div id="scale-in-temp" class="flex gap-0.5 mt-3 h-2 w-full"></div>
+                            </div>
+                            <div>
+                                <p class="text-sm text-blue-200 mb-1">Humidity</p>
+                                <p class="text-3xl font-bold"><span id="in-hum">--</span>%</p>
+                                <div id="scale-in-hum" class="flex gap-0.5 mt-3 h-2 w-full"></div>
                             </div>
                         </div>
                     </div>
