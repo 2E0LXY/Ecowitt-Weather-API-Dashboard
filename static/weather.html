@@ -292,12 +292,12 @@
                 <span id="ai-forecast-model" class="text-xs text-blue-300">Model: --</span>
             </div>
             <div class="space-y-2 text-sm">
-                <p id="ai-forecast-status" class="text-blue-200">Loading AI forecast...</p>
-                <p class="text-blue-200"><span class="font-semibold text-white">Last 24h:</span> <span id="ai-summary-24h">--</span></p>
-                <p class="text-blue-200"><span class="font-semibold text-white">Next 24h:</span> <span id="ai-forecast-24h">--</span></p>
-                <p class="text-blue-200"><span class="font-semibold text-white">Comfort Outlook:</span> <span id="ai-comfort-outlook">--</span></p>
-                <p class="text-blue-200"><span class="font-semibold text-white">Risks:</span> <span id="ai-risks">--</span></p>
-                <p class="text-blue-200"><span class="font-semibold text-white">Confidence:</span> <span id="ai-confidence">--</span></p>
+                <p id="ai-forecast-status" class="text-blue-200">Please wait, analysing weather data and satellite images...</p>
+                <p class="text-blue-200"><span class="font-semibold text-white">Last 24h:</span> <span id="ai-summary-24h">Analysing recent observations...</span></p>
+                <p class="text-blue-200"><span class="font-semibold text-white">Next 24h:</span> <span id="ai-forecast-24h">Building forecast...</span></p>
+                <p class="text-blue-200"><span class="font-semibold text-white">Comfort Outlook:</span> <span id="ai-comfort-outlook">Checking comfort trend...</span></p>
+                <p class="text-blue-200"><span class="font-semibold text-white">Risks:</span> <span id="ai-risks">Scanning for notable risks...</span></p>
+                <p class="text-blue-200"><span class="font-semibold text-white">Confidence:</span> <span id="ai-confidence">Calculating...</span></p>
             </div>
         </section>
 
@@ -1347,6 +1347,16 @@
             }
         }
 
+        function showAiForecastLoading() {
+            if (aiStatusEl) aiStatusEl.textContent = 'Please wait, analysing weather data and satellite images...';
+            if (aiModelEl) aiModelEl.textContent = 'Model: analysing...';
+            if (aiSummary24El) aiSummary24El.textContent = 'Analysing recent observations...';
+            if (aiForecast24El) aiForecast24El.textContent = 'Building forecast...';
+            if (aiComfortEl) aiComfortEl.textContent = 'Checking comfort trend...';
+            if (aiRisksEl) aiRisksEl.textContent = 'Scanning for notable risks...';
+            if (aiConfidenceEl) aiConfidenceEl.textContent = 'Calculating...';
+        }
+
         async function updateAiForecast(force = false) {
             if (!CONFIG.USE_BACKEND_PROXY || window.location.protocol === 'file:') {
                 if (aiStatusEl) aiStatusEl.textContent = 'AI forecast unavailable in file mode.';
@@ -1360,7 +1370,7 @@
 
             aiForecastInFlight = true;
             try {
-                if (aiStatusEl) aiStatusEl.textContent = 'Generating AI forecast...';
+                showAiForecastLoading();
                 const res = await fetchBackendJson('/api/ai-forecast');
                 if (res.status !== 'ok') throw new Error('Invalid AI forecast response');
 
