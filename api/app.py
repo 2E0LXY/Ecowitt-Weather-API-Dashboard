@@ -1,14 +1,17 @@
 import json
 import os
+import re
 import sqlite3
 import time
 from copy import deepcopy
 from datetime import datetime, timezone
+from html import unescape
+from urllib.parse import quote, unquote, urljoin
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 app = FastAPI(title="Weather Dashboard API", version="1.0.0")
@@ -34,6 +37,7 @@ OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini")
 OPENROUTER_MODELS = os.getenv("OPENROUTER_MODELS", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+SATELLITE_BASE_URL = os.getenv("SATELLITE_BASE_URL", "http://zx3de49.glddns.com:8080")
 
 STATIC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "static"))
 
@@ -41,6 +45,8 @@ AI_CACHE_TTL_SECONDS = 900
 _ai_cache = {"ts": 0.0, "payload": None}
 AI_RETRY_COOLDOWN_SECONDS = 600
 _ai_last_failure_ts = 0.0
+SATELLITE_CACHE_TTL_SECONDS = 300
+_satellite_cache = {"ts": 0.0, "payload": None}
 
 
 def db_conn():
@@ -423,6 +429,118 @@ def save_snapshot(snapshot):
     return captured_at
 
 
+def satellite_absolute_url(path_or_url):
+    return urljoin(f"{SATELLITE_BASE_URL.rstrip('/')}/", unescape(path_or_url).lstrip("/"))
+
+
+def satellite_proxy_url(image_url):
+    return f"/api/satellite/image?url={quote(image_url, safe='')}"
+
+
+def parse_capture_cards(html):
+    cards = []
+    for match in re.finditer(r'<div class="card bg-light.*?</div>\s*</div>', html, flags=re.DOTALL):
+        block = match.group(0)
+        pass_match = re.search(r'href="(/captures/listImages\?pass_id=(\d+))"', block)
+        if not pass_match:
+            continue
+        title_match = re.search(r'<h5 class="card-title">\s*(.*?)\s*</h5>', block, flags=re.DOTALL)
+        pass_start_match = re.search(r'<strong>Pass Start:\s*</strong>\s*([^<]+)<', block, flags=re.DOTALL)
+        direction_match = re.search(r'<strong>Direction:\s*</strong>\s*([^<]+)<', block, flags=re.DOTALL)
+        elevation_match = re.search(r'<strong>Elevation:\s*</strong>\s*([^<]+)<', block, flags=re.DOTALL)
+        cards.append({
+            "pass_id": pass_match.group(2),
+            "detail_path": pass_match.group(1),
+            "satellite": unescape(title_match.group(1)).strip() if title_match else "Unknown",
+            "pass_start": " ".join(unescape(pass_start_match.group(1)).split()) if pass_start_match else "--",
+            "direction": " ".join(unescape(direction_match.group(1)).split()) if direction_match else "--",
+            "elevation": " ".join(unescape(elevation_match.group(1)).split()) if elevation_match else "--",
+        })
+    return cards
+
+
+def parse_capture_images(html):
+    images = []
+    for href in re.findall(r'href="(/images/[^"]+\.(?:jpg|jpeg|png))"', html, flags=re.IGNORECASE):
+        url = satellite_absolute_url(href)
+        filename = url.rsplit("/", 1)[-1]
+        name = filename.rsplit(".", 1)[0]
+        parts = name.split("-")
+        enhancement = name
+        if len(parts) >= 6:
+            enhancement = "-".join(parts[5:])
+        images.append({
+            "url": url,
+            "proxy_url": satellite_proxy_url(url),
+            "filename": filename,
+            "enhancement": enhancement,
+        })
+    return images
+
+
+def choose_satellite_image(images):
+    if not images:
+        return None
+    preferences = [
+        "equidistant_221_composite",
+        "equidistant_321_composite",
+        "composite",
+        "equidistant_221",
+        "equidistant_321",
+    ]
+    for preference in preferences:
+        for image in images:
+            if preference in image["filename"]:
+                return image
+    return images[0]
+
+
+async def fetch_latest_satellite_payload(force=False):
+    now = time.time()
+    if not force and _satellite_cache["payload"] and (now - _satellite_cache["ts"] < SATELLITE_CACHE_TTL_SECONDS):
+        cached = deepcopy(_satellite_cache["payload"])
+        cached["cached"] = True
+        cached["cache_age_seconds"] = int(now - _satellite_cache["ts"])
+        return cached
+
+    try:
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+            captures_resp = await client.get(satellite_absolute_url("/captures?page_no=1"))
+            captures_resp.raise_for_status()
+            capture_cards = parse_capture_cards(captures_resp.text)
+            if not capture_cards:
+                raise HTTPException(status_code=502, detail="No satellite captures found")
+
+            latest = capture_cards[0]
+            detail_resp = await client.get(satellite_absolute_url(latest["detail_path"]))
+            detail_resp.raise_for_status()
+            images = parse_capture_images(detail_resp.text)
+    except HTTPException:
+        raise
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(status_code=502, detail=f"Satellite server HTTP error {exc.response.status_code}") from exc
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail=f"Satellite server request error: {exc}") from exc
+
+    chosen = choose_satellite_image(images)
+    if not chosen:
+        raise HTTPException(status_code=502, detail="No satellite images found in latest capture")
+
+    payload = {
+        "status": "ok",
+        "source": SATELLITE_BASE_URL,
+        "cached": False,
+        "cache_age_seconds": 0,
+        "capture": latest,
+        "image": chosen,
+        "images": images,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    _satellite_cache["payload"] = deepcopy(payload)
+    _satellite_cache["ts"] = time.time()
+    return payload
+
+
 @app.on_event("startup")
 async def on_startup():
     init_db()
@@ -431,6 +549,34 @@ async def on_startup():
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/api/satellite/latest")
+async def api_satellite_latest(force: bool = False):
+    return await fetch_latest_satellite_payload(force=force)
+
+
+@app.get("/api/satellite/image")
+async def api_satellite_image(url: str = Query(...)):
+    image_url = unquote(url)
+    allowed_prefix = f"{SATELLITE_BASE_URL.rstrip('/')}/images/"
+    if not image_url.startswith(allowed_prefix):
+        raise HTTPException(status_code=400, detail="Invalid satellite image URL")
+    try:
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+            resp = await client.get(image_url)
+            resp.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(status_code=502, detail=f"Satellite image HTTP error {exc.response.status_code}") from exc
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail=f"Satellite image request error: {exc}") from exc
+
+    content_type = resp.headers.get("content-type", "image/jpeg")
+    return Response(
+        content=resp.content,
+        media_type=content_type,
+        headers={"Cache-Control": "public, max-age=300"},
+    )
 
 
 @app.get("/api/current")

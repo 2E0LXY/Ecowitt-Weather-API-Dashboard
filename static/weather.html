@@ -147,6 +147,35 @@
             white-space: normal;
             word-break: keep-all;
         }
+
+        .satellite-frame {
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid rgba(147, 197, 253, 0.22);
+            border-radius: 1rem;
+            overflow: hidden;
+            min-height: 280px;
+        }
+
+        .satellite-frame img {
+            display: block;
+            width: 100%;
+            height: auto;
+            max-height: 760px;
+            object-fit: contain;
+            background: #020617;
+        }
+
+        .satellite-meta {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        @media (min-width: 768px) {
+            .satellite-meta {
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+            }
+        }
     </style>
 </head>
 <body class="p-4 md:p-8 antialiased">
@@ -248,6 +277,44 @@
                 <p class="text-blue-200"><span class="font-semibold text-white">Comfort Outlook:</span> <span id="ai-comfort-outlook">--</span></p>
                 <p class="text-blue-200"><span class="font-semibold text-white">Risks:</span> <span id="ai-risks">--</span></p>
                 <p class="text-blue-200"><span class="font-semibold text-white">Confidence:</span> <span id="ai-confidence">--</span></p>
+            </div>
+        </section>
+
+        <section class="glass-card p-5 mb-6 live-only">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+                <div>
+                    <h2 class="text-sm font-semibold text-blue-200 uppercase tracking-wider flex items-center gap-2">
+                        <i class="ph ph-satellite"></i> Latest METEOR Satellite Image
+                    </h2>
+                    <p id="satellite-status" class="text-sm text-blue-200 mt-1">Loading latest satellite capture...</p>
+                </div>
+                <button id="satellite-refresh-btn" class="self-start md:self-auto flex items-center gap-2 bg-sky-600 hover:bg-sky-500 text-white px-3 py-2 rounded-full text-sm font-semibold transition-colors">
+                    <i class="ph-bold ph-arrows-clockwise"></i>
+                    Refresh Image
+                </button>
+            </div>
+            <div class="satellite-meta mb-4 text-sm">
+                <div class="rounded-lg bg-white/5 border border-white/10 p-3">
+                    <p class="text-blue-200 text-xs">Satellite</p>
+                    <p id="satellite-name" class="font-semibold">--</p>
+                </div>
+                <div class="rounded-lg bg-white/5 border border-white/10 p-3">
+                    <p class="text-blue-200 text-xs">Pass Start</p>
+                    <p id="satellite-pass-start" class="font-semibold">--</p>
+                </div>
+                <div class="rounded-lg bg-white/5 border border-white/10 p-3">
+                    <p class="text-blue-200 text-xs">Direction</p>
+                    <p id="satellite-direction" class="font-semibold">--</p>
+                </div>
+                <div class="rounded-lg bg-white/5 border border-white/10 p-3">
+                    <p class="text-blue-200 text-xs">Enhancement</p>
+                    <p id="satellite-enhancement" class="font-semibold">--</p>
+                </div>
+            </div>
+            <div class="satellite-frame">
+                <a id="satellite-link" href="#" target="_blank" rel="noopener">
+                    <img id="satellite-image" alt="Latest METEOR satellite capture" loading="lazy">
+                </a>
             </div>
         </section>
 
@@ -579,6 +646,14 @@
         const aiComfortEl = document.getElementById('ai-comfort-outlook');
         const aiRisksEl = document.getElementById('ai-risks');
         const aiConfidenceEl = document.getElementById('ai-confidence');
+        const satelliteStatusEl = document.getElementById('satellite-status');
+        const satelliteNameEl = document.getElementById('satellite-name');
+        const satellitePassStartEl = document.getElementById('satellite-pass-start');
+        const satelliteDirectionEl = document.getElementById('satellite-direction');
+        const satelliteEnhancementEl = document.getElementById('satellite-enhancement');
+        const satelliteImageEl = document.getElementById('satellite-image');
+        const satelliteLinkEl = document.getElementById('satellite-link');
+        const satelliteRefreshBtn = document.getElementById('satellite-refresh-btn');
         const liveOnlySections = document.querySelectorAll('.live-only');
         
         // Loader elements
@@ -1262,7 +1337,7 @@
                 }
                 if (aiStatusEl) {
                     const warning = String(res.warning || '');
-                    const usingFallback = (res.model === 'local-fallback') || warning.includes('429');
+                    const usingFallback = (res.model === 'local-fallback');
                     if (usingFallback) {
                         aiStatusEl.textContent = 'AI provider is busy right now — showing local forecast fallback.';
                     } else if (res.cached) {
@@ -1278,6 +1353,40 @@
                 aiForecastInFlight = false;
             }
         }
+
+        async function updateSatelliteImage(force = false) {
+            if (!CONFIG.USE_BACKEND_PROXY || window.location.protocol === 'file:') {
+                if (satelliteStatusEl) satelliteStatusEl.textContent = 'Satellite image unavailable in file mode.';
+                return;
+            }
+
+            try {
+                if (satelliteStatusEl) satelliteStatusEl.textContent = 'Loading latest satellite capture...';
+                const res = await fetchBackendJson(`/api/satellite/latest${force ? '?force=1' : ''}`);
+                if (res.status !== 'ok') throw new Error('Invalid satellite response');
+
+                const capture = res.capture || {};
+                const image = res.image || {};
+                if (satelliteNameEl) satelliteNameEl.textContent = capture.satellite || '--';
+                if (satellitePassStartEl) satellitePassStartEl.textContent = capture.pass_start || '--';
+                if (satelliteDirectionEl) satelliteDirectionEl.textContent = capture.direction || '--';
+                if (satelliteEnhancementEl) satelliteEnhancementEl.textContent = image.enhancement || '--';
+                if (satelliteImageEl && image.proxy_url) {
+                    satelliteImageEl.src = image.proxy_url;
+                    satelliteImageEl.alt = `${capture.satellite || 'METEOR'} ${image.enhancement || 'satellite image'}`;
+                }
+                if (satelliteLinkEl && image.url) satelliteLinkEl.href = image.url;
+                if (satelliteStatusEl) {
+                    satelliteStatusEl.textContent = res.cached
+                        ? 'Latest satellite capture loaded (cached).'
+                        : 'Latest satellite capture loaded.';
+                }
+            } catch (err) {
+                if (satelliteStatusEl) satelliteStatusEl.textContent = 'Satellite image unavailable.';
+                console.error('Satellite image fetch error:', err);
+            }
+        }
+
         // --- Historic Data Logic ---
         async function fetchHistoricData() {
             resetLoader();
@@ -1519,6 +1628,9 @@
         });
 
         fetchHistBtn.addEventListener('click', fetchHistoricData);
+        if (satelliteRefreshBtn) {
+            satelliteRefreshBtn.addEventListener('click', () => updateSatelliteImage(true));
+        }
 
         loaderClose.addEventListener('click', () => {
             loader.classList.remove('active');
@@ -1542,6 +1654,8 @@
             resetTimer();
             updateAiForecast();
             setInterval(updateAiForecast, 30 * 60 * 1000);
+            updateSatelliteImage();
+            setInterval(updateSatelliteImage, 5 * 60 * 1000);
         })();
 
     </script>

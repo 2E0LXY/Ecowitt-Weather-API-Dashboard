@@ -1,6 +1,3 @@
-<<<<<<< HEAD
-# Ecowitt-Weather-API-Dashboard
-=======
 # Ecowitt Weather Dashboard (FastAPI + SQLite + AI Forecast)
 
 Live weather dashboard for Ecowitt stations with:
@@ -70,6 +67,7 @@ Edit `.env` and fill:
 - `BACKUP_LLM_PROVIDER=openrouter` (or `openai`)
 - `OPENROUTER_API_KEY=...` (recommended backup)
 - `OPENROUTER_MODEL=openai/gpt-4o-mini`
+- `SATELLITE_BASE_URL=http://zx3de49.glddns.com:8080`
 - `OPENAI_API_KEY=...` (optional alternative backup)
 - `OPENAI_MODEL=gpt-4o-mini`
 
@@ -108,6 +106,8 @@ Open:
 - `GET /api/stats?hours=24` 24h DB stats
 - `GET /api/snapshots?limit=100` recent snapshots
 - `GET /api/ai-forecast` AI text summary using DB + current data
+- `GET /api/satellite/latest` latest METEOR capture metadata + proxied image URL
+- `GET /api/satellite/image?url=...` proxied satellite image stream
 
 ## AI failover behavior
 
@@ -139,6 +139,3 @@ If Gemini quota is exhausted, the app will automatically try the backup provider
 - Never commit real keys in `.env`.
 - Keep `.env` server-side only.
 - Rotate keys if accidentally exposed.
-
-
->>>>>>> 29a35f0 (Initial public release: Ecowitt dashboard + FastAPI backend + docs)
