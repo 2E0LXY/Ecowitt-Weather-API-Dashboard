@@ -455,7 +455,6 @@
                                 <p class="text-sm font-semibold mt-1" id="lightning-time">--</p>
                             </div>
                         </div>
-                        <!-- Battery indicator specifically for WH57 -->
                         <div class="mt-4 pt-4 border-t border-white/10 flex justify-between items-center text-sm text-blue-200">
                             <span>Sensor Battery</span>
                             <span id="lightning-batt" class="flex items-center gap-1"><i class="ph ph-battery-warning text-gray-400"></i> Unknown</span>
@@ -477,7 +476,6 @@
                                 <div id="scale-wind" class="flex gap-0.5 mt-1 h-2 w-full"></div>
                             </div>
                             <div class="text-center relative">
-                                <!-- Simple compass indicator -->
                                 <div class="w-16 h-16 rounded-full border-2 border-white/20 flex items-center justify-center relative">
                                     <i class="ph-fill ph-navigation-arrow text-2xl text-blue-400 transition-transform duration-700" id="wind-dir-icon" style="transform: rotate(0deg);"></i>
                                 </div>
@@ -546,6 +544,40 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- WH51 Soil Moisture Card -->
+                    <div class="glass-card p-5 border-l-4 border-l-green-500 relative overflow-hidden group">
+                        <div class="absolute -right-4 -bottom-4 opacity-10 text-8xl group-hover:scale-110 transition-transform duration-500">
+                            <i class="ph-fill ph-plant"></i>
+                        </div>
+                        <div class="flex justify-between items-start mb-4">
+                            <h2 class="text-lg font-semibold text-green-300 flex items-center gap-2">
+                                <i class="ph-fill ph-plant"></i> WH51 Soil Moisture
+                            </h2>
+                            <span id="soil-status" class="px-2 py-1 text-xs rounded-full bg-gray-500/20 text-gray-300 border border-gray-500/30">Checking</span>
+                        </div>
+
+                        <div class="mb-4">
+                            <div class="flex items-baseline gap-2">
+                                <span class="text-5xl font-bold text-green-400" id="soil-moisture">--</span>
+                                <span class="text-xl text-green-300">%</span>
+                            </div>
+                            <p class="text-sm text-blue-200 mt-1" id="soil-label">--</p>
+                        </div>
+
+                        <div id="scale-soil" class="flex gap-0.5 mb-4 h-2 w-full"></div>
+
+                        <div class="grid grid-cols-2 gap-4 pt-4 border-t border-white/10 text-sm">
+                            <div>
+                                <p class="text-blue-200 mb-1">Raw AD</p>
+                                <p class="font-semibold text-slate-300" id="soil-ad">--</p>
+                            </div>
+                            <div>
+                                <p class="text-blue-200 mb-1">Sensor Battery</p>
+                                <p class="font-semibold" id="soil-batt">--</p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
             </main>
@@ -571,6 +603,7 @@
                     <div class="rounded-lg bg-white/5 border border-white/10 p-3"><canvas id="chart-wind" height="160"></canvas></div>
                     <div class="rounded-lg bg-white/5 border border-white/10 p-3"><canvas id="chart-rain" height="160"></canvas></div>
                     <div class="rounded-lg bg-white/5 border border-white/10 p-3 md:col-span-2"><canvas id="chart-lightning" height="140"></canvas></div>
+                    <div class="rounded-lg bg-white/5 border border-white/10 p-3 md:col-span-2"><canvas id="chart-soil" height="140"></canvas></div>
                 </div>
             </div>
 
@@ -585,11 +618,12 @@
                                 <th class="p-4 font-semibold text-blue-200">Wind (<span class="hist-wind-unit">km/h (mph)</span>)</th>
                                 <th class="p-4 font-semibold text-blue-200">Rain (<span class="hist-rain-unit">mm (in)</span>)</th>
                                 <th class="p-4 font-semibold text-blue-200">Lightning Strikes</th>
+                                <th class="p-4 font-semibold text-blue-200">Soil Moisture</th>
                             </tr>
                         </thead>
                         <tbody id="hist-table-body">
                             <tr>
-                                <td colspan="6" class="p-8 text-center text-gray-400">Select a date and click Load History</td>
+                                <td colspan="7" class="p-8 text-center text-gray-400">Select a date and click Load History</td>
                             </tr>
                         </tbody>
                     </table>
@@ -647,7 +681,8 @@
             humidity: null,
             windKmh: null,
             rainMm: null,
-            lightning: null
+            lightning: null,
+            soilMoisture: null
         };
 
         // Elements
@@ -704,7 +739,6 @@
         // Set default date to today
         histDateInput.valueAsDate = new Date();
 
-        // Helper function for safely setting DOM text content
         const safeSetText = (id, text) => {
             const el = document.getElementById(id);
             if (el) el.textContent = text;
@@ -755,77 +789,6 @@
             return `${n > 0 ? '+' : ''}${n.toFixed(digits)}`;
         }
 
-        function comfortImpactText(deltaF, deltaHumidity, deltaWindMph, deltaRainInHr, deltaUv) {
-            const points = [];
-
-            if (Number.isFinite(Number(deltaF))) {
-                const d = Number(deltaF);
-                if (Math.abs(d) >= 0.4) {
-                    const metric = (d * 5 / 9).toFixed(1);
-                    points.push(d > 0 ? `temperature rising (${metric}°C)` : `temperature falling (${metric}°C)`);
-                }
-            }
-            if (Number.isFinite(Number(deltaHumidity))) {
-                const d = Number(deltaHumidity);
-                if (Math.abs(d) >= 1) {
-                    points.push(d > 0 ? `humidity increasing (${fmtSigned(d, 1)}%)` : `humidity decreasing (${fmtSigned(d, 1)}%)`);
-                }
-            }
-            if (Number.isFinite(Number(deltaWindMph))) {
-                const d = Number(deltaWindMph);
-                if (Math.abs(d) >= 0.4) {
-                    const kmh = (d * 1.60934).toFixed(1);
-                    points.push(d > 0 ? `wind increasing (${kmh} km/h)` : `wind easing (${kmh} km/h)`);
-                }
-            }
-            if (Number.isFinite(Number(deltaRainInHr))) {
-                const d = Number(deltaRainInHr);
-                if (Math.abs(d) >= 0.01) {
-                    const mmh = (d * 25.4).toFixed(1);
-                    points.push(d > 0 ? `rain rate increasing (${mmh} mm/hr)` : `rain rate decreasing (${mmh} mm/hr)`);
-                }
-            }
-            if (Number.isFinite(Number(deltaUv))) {
-                const d = Number(deltaUv);
-                if (Math.abs(d) >= 0.5) {
-                    points.push(d > 0 ? `UV increasing (${fmtSigned(d, 1)})` : `UV decreasing (${fmtSigned(d, 1)})`);
-                }
-            }
-
-            if (points.length === 0) return "Only minor changes detected in the last 6 hours.";
-            return points.join(", ") + ".";
-        }
-
-        function comfortNarrative(deltaF, deltaHumidity, deltaWindMph, deltaRainInHr, deltaUv) {
-            const t = Number(deltaF);
-            const h = Number(deltaHumidity);
-            const w = Number(deltaWindMph);
-            const r = Number(deltaRainInHr);
-            const u = Number(deltaUv);
-
-            const tempUp = Number.isFinite(t) && t >= 0.4;
-            const tempDown = Number.isFinite(t) && t <= -0.4;
-            const humUp = Number.isFinite(h) && h >= 1;
-            const humDown = Number.isFinite(h) && h <= -1;
-            const windUp = Number.isFinite(w) && w >= 0.4;
-            const windDown = Number.isFinite(w) && w <= -0.4;
-            const rainUp = Number.isFinite(r) && r >= 0.01;
-            const uvUp = Number.isFinite(u) && u >= 0.5;
-
-            if (tempUp && humUp) return "Temperature and humidity are both rising, so it may feel warmer and stickier.";
-            if (tempUp && humDown) return "Temperature is rising while humidity is falling, so it may feel warmer but drier.";
-            if (tempDown && humUp) return "Temperature is falling while humidity is rising, so it may feel cooler but damper.";
-            if (tempDown && humDown) return "Temperature and humidity are both falling, so it may feel cooler and less muggy.";
-            if (tempUp) return "Temperature is rising, which can make comfort levels feel less pleasant.";
-            if (tempDown) return "Temperature is falling, which can make comfort levels feel more pleasant.";
-            if (humUp) return "Humidity is increasing, so the air may feel heavier.";
-            if (humDown) return "Humidity is decreasing, so the air may feel fresher.";
-            if (windUp) return "Wind is increasing, which can make exposed conditions feel cooler.";
-            if (windDown) return "Wind is easing, so conditions may feel calmer.";
-            if (rainUp || uvUp) return "Rain or UV levels are changing and may affect outdoor comfort.";
-            return "Conditions are relatively steady.";
-        }
-
         function getWindDirectionText(deg) {
             if (deg === '--') return '--';
             const val = Math.floor((deg / 22.5) + 0.5);
@@ -840,33 +803,29 @@
             wind: ['#86efac', '#4ade80', '#22c55e', '#16a34a', '#facc15', '#eab308', '#f97316', '#ea580c', '#ef4444', '#991b1b'],
             rain: ['#f1f5f9', '#e2e8f0', '#cbd5e1', '#93c5fd', '#60a5fa', '#3b82f6', '#2563eb', '#1d4ed8', '#1e40af', '#312e81'],
             uv: ['#4ade80', '#22c55e', '#84cc16', '#facc15', '#eab308', '#f97316', '#ea580c', '#ef4444', '#b91c1c', '#7e22ce'],
-            pressure: ['#0ea5e9', '#38bdf8', '#7dd3fc', '#bae6fd', '#e0f2fe', '#fef08a', '#fde047', '#facc15', '#eab308', '#ca8a04']
+            pressure: ['#0ea5e9', '#38bdf8', '#7dd3fc', '#bae6fd', '#e0f2fe', '#fef08a', '#fde047', '#facc15', '#eab308', '#ca8a04'],
+            soil: ['#92400e', '#b45309', '#d97706', '#fbbf24', '#a3e635', '#4ade80', '#22c55e', '#16a34a', '#166534', '#14532d']
         };
 
         function renderScale(elementId, value, min, max, colorsArray) {
             const container = document.getElementById(elementId);
             if (!container) return;
             container.innerHTML = '';
-            
             const numValue = parseFloat(value);
-            if (isNaN(numValue)) return; // Don't draw if no data
-            
+            if (isNaN(numValue)) return;
             let percentage = (numValue - min) / (max - min);
-            percentage = Math.max(0, Math.min(1, percentage)); // clamp between 0 and 1
-            
+            percentage = Math.max(0, Math.min(1, percentage));
             let filledSegments = Math.round(percentage * 10);
-            if (numValue > min && filledSegments === 0) filledSegments = 1; // Always show 1 if above 0
-
+            if (numValue > min && filledSegments === 0) filledSegments = 1;
             for(let i = 0; i < 10; i++) {
                 const segment = document.createElement('div');
                 segment.className = 'flex-1 rounded-full transition-all duration-500';
-                
                 if (i < filledSegments) {
                     segment.style.backgroundColor = colorsArray[i];
                     segment.style.opacity = '1';
                 } else {
                     segment.style.backgroundColor = '#ffffff';
-                    segment.style.opacity = '0.15'; // Unfilled background
+                    segment.style.opacity = '0.15';
                 }
                 container.appendChild(segment);
             }
@@ -910,7 +869,6 @@
             return `${baseDomain}${path}?${params.toString()}`;
         }
 
-        // --- Robust Fetch Engine with domain fallback and optional proxy fallback ---
         async function fetchEcowitt(path, paramsObj) {
             const failures = [];
             for (const baseDomain of CONFIG.API_BASE_DOMAINS) {
@@ -923,8 +881,6 @@
                     failures.push(`${baseDomain}: ${err.message}`);
                 }
             }
-
-            // Last chance: proxy fallback against the primary URL.
             const primaryUrl = buildApiUrl(CONFIG.API_BASE_DOMAINS[0], path, paramsObj);
             try {
                 const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(primaryUrl)}`;
@@ -1043,10 +999,8 @@
                 safeSetText('last-updated', "Update failed!");
                 const lu = document.getElementById('last-updated');
                 if (lu) lu.classList.add('text-red-400');
-
                 if (!isAutoRefresh) {
-                    let subText = "Make sure you are connected to the internet.";
-                    showLoaderError(`Error: ${error.message}`, subText);
+                    showLoaderError(`Error: ${error.message}`, "Make sure you are connected to the internet.");
                 }
             } finally {
                 setTimeout(() => refreshIcon.classList.remove('animate-spin'), 500);
@@ -1055,13 +1009,11 @@
 
         function applyFastSnapshot(latest) {
             if (!latest) return;
-
             const outTempF = Number(latest.outdoor_temp_f);
             const hum = Number(latest.humidity_pct);
             const pressure = Number(latest.pressure_inhg);
             const wind = Number(latest.wind_mph);
             const rainRate = Number(latest.rain_rate_inhr);
-
             if (Number.isFinite(outTempF)) {
                 safeSetText('out-temp', fToC(outTempF).toFixed(1));
                 safeSetText('out-temp-unit', `°C (${outTempF.toFixed(1)}°F)`);
@@ -1094,23 +1046,20 @@
                 if (stats?.status !== 'ok' || !stats.latest) return;
                 applyFastSnapshot(stats.latest);
                 hasFastPrefill = true;
-            } catch (_) {
-                // Silent fallback to live fetch path.
-            }
+            } catch (_) {}
         }
 
         function updateDOM() {
             if (!rawData || !rawData.data) return;
             const d = rawData.data;
 
-            // Safe extraction helper
             const getVal = (obj, path, def = '--') => {
                 try {
                     return path.split('.').reduce((o, i) => o[i], obj) || def;
                 } catch (e) { return def; }
             };
 
-            // --- TEMPERATURES (Base Ecowitt API is F) ---
+            // --- TEMPERATURES ---
             const outTempF = parseFloat(getVal(d, 'outdoor.temperature.value'));
             const feelsF = parseFloat(getVal(d, 'outdoor.feels_like.value'));
             const dewF = parseFloat(getVal(d, 'outdoor.dew_point.value'));
@@ -1126,7 +1075,7 @@
             safeSetText('out-hum', getVal(d, 'outdoor.humidity.value'));
             safeSetText('in-hum', getVal(d, 'indoor.humidity.value'));
 
-            // --- WIND (Base Ecowitt API is mph) ---
+            // --- WIND ---
             const windSpeed = parseFloat(getVal(d, 'wind.wind_speed.value'));
             const windGust = parseFloat(getVal(d, 'wind.wind_gust.value'));
             const windDir = getVal(d, 'wind.wind_direction.value');
@@ -1142,7 +1091,7 @@
                 if (windDirText) windDirText.innerHTML = `${windDir}° <span class="text-xs text-blue-300 ml-1 font-bold">${getWindDirectionText(windDir)}</span>`;
             }
 
-            // --- RAIN (Base Ecowitt API is inches) ---
+            // --- RAIN ---
             const rainDaily = parseFloat(getVal(d, 'rainfall.daily.value'));
             const rainRate = parseFloat(getVal(d, 'rainfall.rain_rate.value'));
             const rainEvent = parseFloat(getVal(d, 'rainfall.event.value'));
@@ -1167,19 +1116,14 @@
             safeSetText('pressure-abs', fmtPressureDualFromInHg(pressureAbs));
 
             // --- SCALES ---
-            // Rendered using base unit values (F, in, mph) to maintain consistent min/max bounds 
-            // regardless of the Imperial/Metric display toggle.
             renderScale('scale-out-temp', outTempF, 10, 100, SCALES.temp);
             renderScale('scale-out-hum', getVal(d, 'outdoor.humidity.value'), 0, 100, SCALES.hum);
             renderScale('scale-out-dew', dewF, 10, 80, SCALES.temp);
-            
             renderScale('scale-in-temp', inTempF, 50, 90, SCALES.temp);
             renderScale('scale-in-hum', getVal(d, 'indoor.humidity.value'), 0, 100, SCALES.hum);
-            
             renderScale('scale-solar', solar, 0, 1000, SCALES.uv);
             renderScale('scale-uv', uvi, 0, 11, SCALES.uv);
             renderScale('scale-pressure', pressure, 29.0, 30.5, SCALES.pressure);
-            
             renderScale('scale-wind', windSpeed, 0, 35, SCALES.wind);
             renderScale('scale-rain', rainDaily, 0, 2.0, SCALES.rain);
 
@@ -1193,8 +1137,6 @@
             
             if (lightningTimeVal && lightningTimeVal !== '--' && !isNaN(distMi)) {
                 safeSetText('lightning-dist', Number.isFinite(distMi) ? miToKm(distMi).toFixed(1) : '--');
-                
-                // Show Date + Time because last strike could be from days ago
                 const dTime = new Date(lightningTimeVal * 1000);
                 safeSetText('lightning-time', dTime.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }));
             } else {
@@ -1245,11 +1187,48 @@
                 lightningBattEl.innerHTML = `<i class="ph ${battStatus.icon} ${battStatus.color}"></i> <span class="${battStatus.color}">${battStatus.text}</span>`;
             }
 
+            // --- WH51 SOIL MOISTURE ---
+            const soilMoisture = parseFloat(getVal(d, 'soil_ch1.soilmoisture.value'));
+            const soilAd = getVal(d, 'soil_ch1.ad.value');
+            const soilBattV = parseFloat(getVal(d, 'battery.soilmoisture_sensor_ch1.value'));
+
+            safeSetText('soil-moisture', isNaN(soilMoisture) ? '--' : soilMoisture.toFixed(0));
+            safeSetText('soil-ad', isNaN(parseFloat(soilAd)) ? '--' : `AD: ${soilAd}`);
+            renderScale('scale-soil', soilMoisture, 0, 100, SCALES.soil);
+
+            function getSoilLabel(pct) {
+                if (isNaN(pct)) return { label: 'No sensor data', status: 'Unknown', cls: 'bg-gray-500/20 text-gray-300 border-gray-500/30' };
+                if (pct < 20) return { label: 'Very dry — consider watering', status: 'Very Dry', cls: 'bg-orange-500/20 text-orange-200 border-orange-400/40' };
+                if (pct < 40) return { label: 'Dry — soil moisture is low', status: 'Dry', cls: 'bg-yellow-500/20 text-yellow-200 border-yellow-400/40' };
+                if (pct < 60) return { label: 'Moist — optimal range', status: 'Moist', cls: 'bg-green-500/20 text-green-200 border-green-400/40' };
+                if (pct < 80) return { label: 'Wet — well saturated', status: 'Wet', cls: 'bg-blue-500/20 text-blue-200 border-blue-400/40' };
+                return { label: 'Saturated — possible waterlogging', status: 'Saturated', cls: 'bg-indigo-500/20 text-indigo-200 border-indigo-400/40' };
+            }
+            const soilInfo = getSoilLabel(soilMoisture);
+            const soilLabelEl = document.getElementById('soil-label');
+            const soilStatusEl = document.getElementById('soil-status');
+            if (soilLabelEl) soilLabelEl.textContent = soilInfo.label;
+            if (soilStatusEl) { soilStatusEl.className = `px-2 py-1 text-xs rounded-full border ${soilInfo.cls}`; soilStatusEl.textContent = soilInfo.status; }
+
+            const soilBattEl = document.getElementById('soil-batt');
+            if (soilBattEl) {
+                if (isNaN(soilBattV)) {
+                    soilBattEl.innerHTML = '<span class="text-gray-400">Unknown</span>';
+                } else if (soilBattV < 1.1) {
+                    soilBattEl.innerHTML = `<span class="text-red-400"><i class="ph ph-battery-empty"></i> ${soilBattV.toFixed(2)}V Low</span>`;
+                } else if (soilBattV < 1.3) {
+                    soilBattEl.innerHTML = `<span class="text-yellow-400"><i class="ph ph-battery-low"></i> ${soilBattV.toFixed(2)}V Fair</span>`;
+                } else {
+                    soilBattEl.innerHTML = `<span class="text-green-400"><i class="ph ph-battery-full"></i> ${soilBattV.toFixed(2)}V Good</span>`;
+                }
+            }
+
             currentOverlay.tempC = Number.isFinite(outTempF) ? fToC(outTempF) : null;
             currentOverlay.humidity = Number.isFinite(parseFloat(getVal(d, 'outdoor.humidity.value'))) ? parseFloat(getVal(d, 'outdoor.humidity.value')) : null;
             currentOverlay.windKmh = Number.isFinite(windSpeed) ? mphToKmh(windSpeed) : null;
             currentOverlay.rainMm = Number.isFinite(rainRate) ? inToMm(rainRate) : null;
             currentOverlay.lightning = Number.isFinite(parseFloat(strikes)) ? parseFloat(strikes) : null;
+            currentOverlay.soilMoisture = Number.isFinite(soilMoisture) ? soilMoisture : null;
 
             // Setup MAC & Array Battery
             safeSetText('device-mac', CONFIG.MAC);
@@ -1272,21 +1251,11 @@
                 conditionTextEl.textContent = summary.text;
                 conditionTextEl.className = `text-lg font-semibold ${summary.accent}`;
             }
-            if (conditionIconEl) {
-                conditionIconEl.className = `ph-fill ${summary.icon} text-3xl ${summary.accent}`;
-            }
-            if (heroWeatherIconEl) {
-                heroWeatherIconEl.className = `ph-fill ${summary.icon} text-4xl ${summary.accent}`;
-            }
-            if (rainChipEl) {
-                rainChipEl.innerHTML = `<span class="chip-label">Rain</span><span class="chip-value">${fmtRainRateDualFromIn(rainRate)}</span>`;
-            }
-            if (windChipEl) {
-                windChipEl.innerHTML = `<span class="chip-label">Wind</span><span class="chip-value">${fmtSpeedDualFromMph(windSpeed)}</span>`;
-            }
-            if (uvChipEl) {
-                uvChipEl.innerHTML = `<span class="chip-label">UV</span><span class="chip-value">${isNaN(uvi) ? "--" : uvi.toFixed(1)}</span>`;
-            }
+            if (conditionIconEl) conditionIconEl.className = `ph-fill ${summary.icon} text-3xl ${summary.accent}`;
+            if (heroWeatherIconEl) heroWeatherIconEl.className = `ph-fill ${summary.icon} text-4xl ${summary.accent}`;
+            if (rainChipEl) rainChipEl.innerHTML = `<span class="chip-label">Rain</span><span class="chip-value">${fmtRainRateDualFromIn(rainRate)}</span>`;
+            if (windChipEl) windChipEl.innerHTML = `<span class="chip-label">Wind</span><span class="chip-value">${fmtSpeedDualFromMph(windSpeed)}</span>`;
+            if (uvChipEl) uvChipEl.innerHTML = `<span class="chip-label">UV</span><span class="chip-value">${isNaN(uvi) ? "--" : uvi.toFixed(1)}</span>`;
 
             document.querySelectorAll('.temp-unit-small').forEach(el => el.textContent = '(°F)');
             document.querySelectorAll('.wind-unit-small').forEach(el => el.textContent = '(mph)');
@@ -1303,32 +1272,27 @@
                 if (statsLastAgeEl) statsLastAgeEl.textContent = 'Last saved: backend not connected';
                 return;
             }
-
             try {
                 const stats = await fetchBackendJson('/api/stats?hours=24');
                 if (stats.status !== 'ok') {
                     if (statsLastAgeEl) statsLastAgeEl.textContent = 'Last saved: waiting for data';
                     return;
                 }
-
                 const summary = stats.summary || {};
                 const tempSummary = summary.temperature_f || {};
                 const windSummary = summary.wind_mph || {};
                 const humSummary = summary.humidity_pct || {};
-
                 const tempMin = tempSummary.min;
                 const tempMax = tempSummary.max;
                 const tempAvg = tempSummary.avg;
                 const windMax = windSummary.max;
                 const humAvg = humSummary.avg;
                 const points = stats.points;
-
                 const showTemp = (v) => {
                     if (v === null || v === undefined || isNaN(Number(v))) return '--';
                     const vf = Number(v);
                     return `${fToC(vf).toFixed(1)}°C (${vf.toFixed(1)}°F)`;
                 };
-
                 if (statsTempHiLoEl) statsTempHiLoEl.textContent = `${showTemp(tempMax)} / ${showTemp(tempMin)}`;
                 if (statsTempAvgEl) statsTempAvgEl.textContent = showTemp(tempAvg);
                 if (statsWindMaxEl) {
@@ -1362,18 +1326,15 @@
                 if (aiStatusEl) aiStatusEl.textContent = 'AI forecast unavailable in file mode.';
                 return;
             }
-
             const now = Date.now();
             if (!force && (aiForecastInFlight || (aiForecastLastSuccessAt && (now - aiForecastLastSuccessAt) < 10 * 60 * 1000))) {
                 return;
             }
-
             aiForecastInFlight = true;
             try {
                 showAiForecastLoading();
                 const res = await fetchBackendJson('/api/ai-forecast');
                 if (res.status !== 'ok') throw new Error('Invalid AI forecast response');
-
                 const ai = res.ai_forecast || {};
                 if (aiModelEl) aiModelEl.textContent = `Model: ${res.model || '--'}`;
                 if (aiSummary24El) aiSummary24El.textContent = ai.summary_24h || '--';
@@ -1385,7 +1346,6 @@
                     else aiRisksEl.textContent = ai.risks || '--';
                 }
                 if (aiStatusEl) {
-                    const warning = String(res.warning || '');
                     const usingFallback = (res.model === 'local-fallback');
                     if (usingFallback) {
                         aiStatusEl.textContent = 'AI provider is busy right now — showing local forecast fallback.';
@@ -1408,25 +1368,18 @@
                 if (satelliteStatusEl) satelliteStatusEl.textContent = 'Satellite image unavailable in file mode.';
                 return;
             }
-
             try {
                 if (satelliteStatusEl) satelliteStatusEl.textContent = 'Loading latest satellite capture...';
                 const res = await fetchBackendJson(`/api/satellite/latest${force ? '?force=1' : ''}`);
                 if (res.status !== 'ok') throw new Error('Invalid satellite response');
-
                 const capture = res.capture || {};
                 const image = res.image || {};
                 const allImages = Array.isArray(res.images) ? res.images : [];
                 const pickImage = (needle, fallback = null) => {
                     return allImages.find((item) => item.filename && item.filename.includes(needle)) || fallback;
                 };
-                const primaryImage = image.proxy_url
-                    ? image
-                    : pickImage('equidistant_221_composite', allImages[0] || {});
-                const secondaryImage = pickImage('equidistant_321_composite')
-                    || allImages.find((item) => item.filename !== primaryImage.filename)
-                    || primaryImage;
-
+                const primaryImage = image.proxy_url ? image : pickImage('equidistant_221_composite', allImages[0] || {});
+                const secondaryImage = pickImage('equidistant_321_composite') || allImages.find((item) => item.filename !== primaryImage.filename) || primaryImage;
                 if (satelliteNameEl) satelliteNameEl.textContent = capture.satellite || '--';
                 if (satellitePassStartEl) satellitePassStartEl.textContent = capture.pass_start || '--';
                 if (satelliteDirectionEl) satelliteDirectionEl.textContent = capture.direction || '--';
@@ -1444,16 +1397,10 @@
                 }
                 if (satelliteLinkPrimaryEl && primaryImage.url) satelliteLinkPrimaryEl.href = primaryImage.url;
                 if (satelliteLinkSecondaryEl && secondaryImage.url) satelliteLinkSecondaryEl.href = secondaryImage.url;
-                if (satelliteCaptionPrimaryEl) {
-                    satelliteCaptionPrimaryEl.textContent = primaryImage.enhancement || primaryImage.filename || '--';
-                }
-                if (satelliteCaptionSecondaryEl) {
-                    satelliteCaptionSecondaryEl.textContent = secondaryImage.enhancement || secondaryImage.filename || '--';
-                }
+                if (satelliteCaptionPrimaryEl) satelliteCaptionPrimaryEl.textContent = primaryImage.enhancement || primaryImage.filename || '--';
+                if (satelliteCaptionSecondaryEl) satelliteCaptionSecondaryEl.textContent = secondaryImage.enhancement || secondaryImage.filename || '--';
                 if (satelliteStatusEl) {
-                    satelliteStatusEl.textContent = res.cached
-                        ? 'Latest satellite capture loaded (cached).'
-                        : 'Latest satellite capture loaded.';
+                    satelliteStatusEl.textContent = res.cached ? 'Latest satellite capture loaded (cached).' : 'Latest satellite capture loaded.';
                 }
             } catch (err) {
                 if (satelliteStatusEl) satelliteStatusEl.textContent = 'Satellite image unavailable.';
@@ -1466,15 +1413,13 @@
             resetLoader();
             loaderText.textContent = "Fetching Historic Data...";
             loader.classList.add('active');
-            
             try {
                 const selectedDate = histDateInput.value;
                 if (!selectedDate) throw new Error("Please select a date");
-
                 if (CONFIG.USE_MOCK_DATA) {
                     throw new Error("Simulation mode disabled.");
                 } else {
-                    const callBacks = 'outdoor.temperature,outdoor.humidity,wind.wind_speed,rainfall.daily,lightning.count';
+                    const callBacks = 'outdoor.temperature,outdoor.humidity,wind.wind_speed,rainfall.daily,lightning.count,soil_ch1.soilmoisture';
                     const json = await fetchEcowitt(CONFIG.HISTORY_PATH, {
                         application_key: CONFIG.APP_KEY,
                         api_key: CONFIG.API_KEY,
@@ -1484,72 +1429,59 @@
                         cycle_type: 'auto',
                         call_back: callBacks
                     });
-
                     if (json.code !== 0) throw new Error(`API Error: ${json.msg}`);
-                    
-                    // Pivot logic for Ecowitt API Structure
                     const d = json.data || {};
                     const timestamps = new Set();
-                    
                     const extractKeys = (path) => {
                         try {
                             const list = path.split('.').reduce((o, i) => o[i], d).list;
                             if (list) Object.keys(list).forEach(k => timestamps.add(k));
                         } catch(e) {}
                     };
-                    
                     extractKeys('outdoor.temperature');
                     extractKeys('outdoor.humidity');
                     extractKeys('wind.wind_speed');
                     extractKeys('rainfall.daily');
                     extractKeys('lightning.count');
-                    
-                    // Sort descending by timestamp and map values to standard objects
+                    extractKeys('soil_ch1.soilmoisture');
                     rawHistData = Array.from(timestamps).sort((a,b) => b - a).map(ts => {
-                         const getVal = (path, def='0') => {
-                             try { return path.split('.').reduce((o, i) => o[i], d).list[ts] || def; } 
-                             catch(e) { return def; }
-                         };
-                         
-                         return {
-                             time: ts,
-                             temp: getVal('outdoor.temperature', '--'),
-                             humidity: getVal('outdoor.humidity', '--'),
-                             wind: getVal('wind.wind_speed', '0'),
-                             rain: getVal('rainfall.daily', '0'),
-                             lightning: getVal('lightning.count', '0')
-                         };
+                        const getVal = (path, def='0') => {
+                            try { return path.split('.').reduce((o, i) => o[i], d).list[ts] || def; }
+                            catch(e) { return def; }
+                        };
+                        return {
+                            time: ts,
+                            temp: getVal('outdoor.temperature', '--'),
+                            humidity: getVal('outdoor.humidity', '--'),
+                            wind: getVal('wind.wind_speed', '0'),
+                            rain: getVal('rainfall.daily', '0'),
+                            lightning: getVal('lightning.count', '0'),
+                            soil: getVal('soil_ch1.soilmoisture', '--')
+                        };
                     });
                 }
                 updateHistDOM();
                 loader.classList.remove('active');
             } catch (error) {
                 console.error("Historic fetch error:", error);
-                histTableBody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-red-400">Failed to load data: ${error.message}</td></tr>`;
-                
-                let subText = "Make sure you are connected to the internet.";
-                showLoaderError(`Error: ${error.message}`, subText);
+                histTableBody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-red-400">Failed to load data: ${error.message}</td></tr>`;
+                showLoaderError(`Error: ${error.message}`, "Make sure you are connected to the internet.");
             }
         }
 
         function updateHistDOM() {
-            // Update table headers based on global toggle
             document.querySelectorAll('.hist-temp-unit').forEach(el => el.textContent = '°C (°F)');
             document.querySelectorAll('.hist-wind-unit').forEach(el => el.textContent = 'km/h (mph)');
             document.querySelectorAll('.hist-rain-unit').forEach(el => el.textContent = 'mm (in)');
-
             if (!rawHistData || rawHistData.length === 0) return;
-
             histTableBody.innerHTML = '';
             rawHistData.forEach(row => {
                 const t = parseFloat(row.temp);
                 const w = parseFloat(row.wind);
                 const r = parseFloat(row.rain);
-                
                 const displayTemp = isNaN(t) ? '--' : `${fToC(t).toFixed(1)} (${t.toFixed(1)})`;
                 const displayWind = isNaN(w) ? '--' : `${mphToKmh(w).toFixed(1)} (${w.toFixed(1)})`;
                 const displayRain = isNaN(r) ? '--' : `${inToMm(r).toFixed(2)} (${r.toFixed(2)})`;
-
                 const tr = document.createElement('tr');
                 tr.className = 'border-b border-white/5 hover:bg-white/5 transition-colors';
                 tr.innerHTML = `
@@ -1559,17 +1491,15 @@
                     <td class="p-4">${displayWind}</td>
                     <td class="p-4">${displayRain}</td>
                     <td class="p-4 ${row.lightning !== "0" && row.lightning !== "--" ? 'text-yellow-400 font-semibold' : ''}">${row.lightning}</td>
+                    <td class="p-4 text-green-300">${row.soil !== '--' ? row.soil + '%' : '--'}</td>
                 `;
                 histTableBody.appendChild(tr);
             });
-
             renderHistoricCharts();
         }
 
         function destroyHistoricCharts() {
-            Object.values(histCharts).forEach((chart) => {
-                if (chart) chart.destroy();
-            });
+            Object.values(histCharts).forEach((chart) => { if (chart) chart.destroy(); });
             histCharts = {};
         }
 
@@ -1609,21 +1539,11 @@
                     interaction: { mode: 'index', intersect: false },
                     plugins: {
                         legend: { labels: { color: '#cbd5e1' } },
-                        tooltip: {
-                            callbacks: {
-                                label: (context) => `${context.dataset.label}: ${valueFormatter(context.parsed.y)}`
-                            }
-                        }
+                        tooltip: { callbacks: { label: (context) => `${context.dataset.label}: ${valueFormatter(context.parsed.y)}` } }
                     },
                     scales: {
-                        x: {
-                            ticks: { color: '#93c5fd', maxTicksLimit: 8 },
-                            grid: { color: 'rgba(255,255,255,0.08)' }
-                        },
-                        y: {
-                            ticks: { color: '#93c5fd' },
-                            grid: { color: 'rgba(255,255,255,0.08)' }
-                        }
+                        x: { ticks: { color: '#93c5fd', maxTicksLimit: 8 }, grid: { color: 'rgba(255,255,255,0.08)' } },
+                        y: { ticks: { color: '#93c5fd' }, grid: { color: 'rgba(255,255,255,0.08)' } }
                     }
                 }
             });
@@ -1632,96 +1552,50 @@
         function renderHistoricCharts() {
             if (!rawHistData || !rawHistData.length) return;
             destroyHistoricCharts();
-
             const rows = [...rawHistData].reverse();
             const labels = rows.map((r) => formatTime(r.time));
-            const tempData = rows.map((r) => {
-                const f = parseFloat(r.temp);
-                return Number.isFinite(f) ? fToC(f) : null;
-            });
-            const humData = rows.map((r) => {
-                const v = parseFloat(r.humidity);
-                return Number.isFinite(v) ? v : null;
-            });
-            const windData = rows.map((r) => {
-                const mph = parseFloat(r.wind);
-                return Number.isFinite(mph) ? mphToKmh(mph) : null;
-            });
-            const rainData = rows.map((r) => {
-                const inches = parseFloat(r.rain);
-                return Number.isFinite(inches) ? inToMm(inches) : null;
-            });
-            const lightningData = rows.map((r) => {
-                const v = parseFloat(r.lightning);
-                return Number.isFinite(v) ? v : null;
-            });
+            const tempData = rows.map((r) => { const f = parseFloat(r.temp); return Number.isFinite(f) ? fToC(f) : null; });
+            const humData  = rows.map((r) => { const v = parseFloat(r.humidity); return Number.isFinite(v) ? v : null; });
+            const windData = rows.map((r) => { const mph = parseFloat(r.wind); return Number.isFinite(mph) ? mphToKmh(mph) : null; });
+            const rainData = rows.map((r) => { const inches = parseFloat(r.rain); return Number.isFinite(inches) ? inToMm(inches) : null; });
+            const lightningData = rows.map((r) => { const v = parseFloat(r.lightning); return Number.isFinite(v) ? v : null; });
+            const soilData = rows.map((r) => { const v = parseFloat(r.soil); return Number.isFinite(v) ? v : null; });
 
-            histCharts.temp = buildHistoricChart(
-                'chart-temp', labels, tempData, currentOverlay.tempC, 'Temperature', '#fb7185',
-                (v) => `${Number(v).toFixed(1)}°C`
-            );
-            histCharts.humidity = buildHistoricChart(
-                'chart-humidity', labels, humData, currentOverlay.humidity, 'Humidity', '#60a5fa',
-                (v) => `${Number(v).toFixed(1)}%`
-            );
-            histCharts.wind = buildHistoricChart(
-                'chart-wind', labels, windData, currentOverlay.windKmh, 'Wind', '#22d3ee',
-                (v) => `${Number(v).toFixed(1)} km/h`
-            );
-            histCharts.rain = buildHistoricChart(
-                'chart-rain', labels, rainData, currentOverlay.rainMm, 'Rain', '#34d399',
-                (v) => `${Number(v).toFixed(2)} mm`
-            );
-            histCharts.lightning = buildHistoricChart(
-                'chart-lightning', labels, lightningData, currentOverlay.lightning, 'Lightning Strikes', '#facc15',
-                (v) => `${Math.round(Number(v))}`
-            );
+            histCharts.temp     = buildHistoricChart('chart-temp',      labels, tempData,      currentOverlay.tempC,        'Temperature',       '#fb7185', (v) => `${Number(v).toFixed(1)}°C`);
+            histCharts.humidity = buildHistoricChart('chart-humidity',   labels, humData,       currentOverlay.humidity,     'Humidity',          '#60a5fa', (v) => `${Number(v).toFixed(1)}%`);
+            histCharts.wind     = buildHistoricChart('chart-wind',       labels, windData,      currentOverlay.windKmh,      'Wind',              '#22d3ee', (v) => `${Number(v).toFixed(1)} km/h`);
+            histCharts.rain     = buildHistoricChart('chart-rain',       labels, rainData,      currentOverlay.rainMm,       'Rain',              '#34d399', (v) => `${Number(v).toFixed(2)} mm`);
+            histCharts.lightning= buildHistoricChart('chart-lightning',  labels, lightningData, currentOverlay.lightning,    'Lightning Strikes', '#facc15', (v) => `${Math.round(Number(v))}`);
+            histCharts.soil     = buildHistoricChart('chart-soil',       labels, soilData,      currentOverlay.soilMoisture, 'Soil Moisture CH1', '#4ade80', (v) => `${Number(v).toFixed(0)}%`);
         }
 
         // Tab Events
         tabLive.addEventListener('click', () => {
-            tabLive.classList.add('tab-active');
-            tabLive.classList.remove('tab-inactive');
-            tabHistoric.classList.add('tab-inactive');
-            tabHistoric.classList.remove('tab-active');
-            viewLive.classList.remove('hidden');
-            viewHistoric.classList.add('hidden');
+            tabLive.classList.add('tab-active'); tabLive.classList.remove('tab-inactive');
+            tabHistoric.classList.add('tab-inactive'); tabHistoric.classList.remove('tab-active');
+            viewLive.classList.remove('hidden'); viewHistoric.classList.add('hidden');
             refreshBtn.style.display = 'flex';
             liveOnlySections.forEach((section) => section.classList.remove('hidden'));
         });
 
         tabHistoric.addEventListener('click', () => {
-            tabHistoric.classList.add('tab-active');
-            tabHistoric.classList.remove('tab-inactive');
-            tabLive.classList.add('tab-inactive');
-            tabLive.classList.remove('tab-active');
-            viewHistoric.classList.remove('hidden');
-            viewLive.classList.add('hidden');
+            tabHistoric.classList.add('tab-active'); tabHistoric.classList.remove('tab-inactive');
+            tabLive.classList.add('tab-inactive'); tabLive.classList.remove('tab-active');
+            viewHistoric.classList.remove('hidden'); viewLive.classList.add('hidden');
             refreshBtn.style.display = 'none';
             liveOnlySections.forEach((section) => section.classList.add('hidden'));
         });
 
         fetchHistBtn.addEventListener('click', fetchHistoricData);
-        if (satelliteRefreshBtn) {
-            satelliteRefreshBtn.addEventListener('click', () => updateSatelliteImage(true));
-        }
-
-        loaderClose.addEventListener('click', () => {
-            loader.classList.remove('active');
-        });
-
-        // Events
-        refreshBtn.addEventListener('click', () => {
-            resetTimer();
-            fetchWeatherData(false); 
-        });
+        if (satelliteRefreshBtn) satelliteRefreshBtn.addEventListener('click', () => updateSatelliteImage(true));
+        loaderClose.addEventListener('click', () => { loader.classList.remove('active'); });
+        refreshBtn.addEventListener('click', () => { resetTimer(); fetchWeatherData(false); });
 
         function resetTimer() {
             if(refreshTimer) clearInterval(refreshTimer);
-            refreshTimer = setInterval(() => fetchWeatherData(true), CONFIG.REFRESH_INTERVAL_MS); 
+            refreshTimer = setInterval(() => fetchWeatherData(true), CONFIG.REFRESH_INTERVAL_MS);
         }
 
-        // Init: paint from DB immediately, then refresh live.
         (async () => {
             await fastPrefillFromDatabase();
             fetchWeatherData(false);

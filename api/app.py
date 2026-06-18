@@ -129,11 +129,17 @@ def init_db():
                 wind_mph REAL,
                 rain_rate_inhr REAL,
                 uv_index REAL,
-                comfort_score REAL
+                comfort_score REAL,
+                soil_moisture_pct REAL
             )
             """
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_weather_snapshots_captured_at ON weather_snapshots(captured_at)")
+        # Migration: add soil_moisture_pct to tables created before this column existed
+        try:
+            conn.execute("ALTER TABLE weather_snapshots ADD COLUMN soil_moisture_pct REAL")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
         conn.commit()
 
 
@@ -309,8 +315,6 @@ async def call_openai_compatible_forecast(context_payload, base_url, api_key, mo
         ],
         "temperature": 0.4,
     }
-    # Some OpenRouter/free models reject response_format=json_object.
-    # Keep it for OpenAI; omit for OpenRouter compatibility.
     if provider_name != "openrouter":
         body["response_format"] = {"type": "json_object"}
 
@@ -357,7 +361,6 @@ async def call_backup_llm_forecast(context_payload):
             model_name=OPENAI_MODEL,
             provider_name="openai",
         ), OPENAI_MODEL
-    # default: openrouter (single model fallback)
     return await call_openai_compatible_forecast(
         context_payload=context_payload,
         base_url="https://openrouter.ai/api/v1",
@@ -409,6 +412,7 @@ def extract_snapshot(payload):
     wind = to_float(get("wind", "wind_speed", "value"))
     rain_rate = to_float(get("rainfall", "rain_rate", "value"))
     uv = to_float(get("solar_and_uvi", "uvi", "value"))
+    soil_moisture = to_float(get("soil_ch1", "soilmoisture", "value"))
     return {
         "outdoor_temp_f": temp_f,
         "humidity_pct": humidity,
@@ -417,6 +421,7 @@ def extract_snapshot(payload):
         "rain_rate_inhr": rain_rate,
         "uv_index": uv,
         "comfort_score": weather_comfort_score(temp_f, humidity, wind, rain_rate, uv),
+        "soil_moisture_pct": soil_moisture,
     }
 
 
@@ -427,8 +432,8 @@ def save_snapshot(snapshot):
             """
             INSERT INTO weather_snapshots (
                 captured_at, outdoor_temp_f, humidity_pct, pressure_inhg,
-                wind_mph, rain_rate_inhr, uv_index, comfort_score
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                wind_mph, rain_rate_inhr, uv_index, comfort_score, soil_moisture_pct
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 captured_at,
@@ -439,6 +444,7 @@ def save_snapshot(snapshot):
                 snapshot.get("rain_rate_inhr"),
                 snapshot.get("uv_index"),
                 snapshot.get("comfort_score"),
+                snapshot.get("soil_moisture_pct"),
             ),
         )
         conn.commit()
@@ -672,7 +678,7 @@ async def api_trend(hours: int = 6):
         rows = conn.execute(
             """
             SELECT captured_at, outdoor_temp_f, humidity_pct, pressure_inhg,
-                   wind_mph, rain_rate_inhr, uv_index, comfort_score
+                   wind_mph, rain_rate_inhr, uv_index, comfort_score, soil_moisture_pct
             FROM weather_snapshots
             WHERE captured_at >= datetime('now', ?)
             ORDER BY captured_at ASC
@@ -710,6 +716,7 @@ async def api_trend(hours: int = 6):
             "wind_mph": {"delta": delta("wind_mph"), "trend": trend_label(delta("wind_mph"), False)},
             "rain_rate_inhr": {"delta": delta("rain_rate_inhr"), "trend": trend_label(delta("rain_rate_inhr"), False)},
             "uv_index": {"delta": delta("uv_index"), "trend": "info"},
+            "soil_moisture_pct": {"delta": delta("soil_moisture_pct"), "trend": "info"},
         },
         "latest": dict(last),
     }
@@ -752,7 +759,10 @@ async def api_stats(hours: int = 24):
                 MAX(wind_mph) AS wind_max_mph,
                 AVG(wind_mph) AS wind_avg_mph,
                 SUM(COALESCE(rain_rate_inhr, 0)) AS rain_rate_sum,
-                AVG(comfort_score) AS comfort_avg
+                AVG(comfort_score) AS comfort_avg,
+                MIN(soil_moisture_pct) AS soil_min,
+                MAX(soil_moisture_pct) AS soil_max,
+                AVG(soil_moisture_pct) AS soil_avg
             FROM weather_snapshots
             WHERE captured_at >= datetime('now', ?)
             """,
@@ -762,7 +772,7 @@ async def api_stats(hours: int = 24):
         latest = conn.execute(
             """
             SELECT captured_at, outdoor_temp_f, humidity_pct, pressure_inhg,
-                   wind_mph, rain_rate_inhr, uv_index, comfort_score
+                   wind_mph, rain_rate_inhr, uv_index, comfort_score, soil_moisture_pct
             FROM weather_snapshots
             ORDER BY captured_at DESC
             LIMIT 1
@@ -804,6 +814,11 @@ async def api_stats(hours: int = 24):
             },
             "rain_rate_sum_inhr": round_or_none(agg["rain_rate_sum"], 3),
             "comfort_score_avg": round_or_none(agg["comfort_avg"], 2),
+            "soil_moisture_pct": {
+                "min": round_or_none(agg["soil_min"], 1),
+                "max": round_or_none(agg["soil_max"], 1),
+                "avg": round_or_none(agg["soil_avg"], 1),
+            },
         },
     }
 
@@ -914,7 +929,6 @@ async def api_ai_forecast():
 
     except HTTPException as exc:
         _ai_last_failure_ts = time.time()
-        # Try backup provider before returning fallback
         try:
             if BACKUP_LLM_PROVIDER == "openrouter":
                 backup_ai, backup_model = await call_openrouter_chain_forecast(context_payload)
