@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -13,17 +13,17 @@
     <style>
         body {
             font-family: 'Inter', sans-serif;
-            background: linear-gradient(-45deg, #0f172a, #1e1b4b, #0c4a6e, #172554);
-            background-size: 400% 400%;
-            animation: gradientBG 15s ease infinite;
+            background: #0a1628;
             color: white;
             min-height: 100vh;
         }
 
-        @keyframes gradientBG {
-            0% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
-            100% { background-position: 0% 50%; }
+        #sky-canvas {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: -1;
+            pointer-events: none;
         }
 
         .glass-card {
@@ -200,6 +200,7 @@
     </style>
 </head>
 <body class="p-4 md:p-8 antialiased">
+<canvas id="sky-canvas"></canvas>
 
     <div class="max-w-7xl mx-auto">
         <!-- Header -->
@@ -316,7 +317,7 @@
                             <div>
                                 <div class="flex items-end gap-2 mb-2">
                                     <span class="text-6xl font-bold tracking-tighter" id="out-temp">--</span>
-                                    <span class="text-2xl text-blue-300 font-medium pb-1" id="out-temp-unit">┬░F</span>
+                                    <span class="text-2xl text-blue-300 font-medium pb-1" id="out-temp-unit">°F</span>
                                 </div>
                                 <p class="text-lg opacity-90 mb-4">Feels like: <span id="out-feels" class="font-semibold">--</span></p>
                                 
@@ -336,7 +337,7 @@
                                     </div>
                                     <div>
                                         <p class="text-sm text-blue-200 mb-1">Dew Point</p>
-                                        <p class="text-xl font-semibold"><span id="out-dew">--</span> <span class="text-sm temp-unit-small">┬░F</span></p>
+                                        <p class="text-xl font-semibold"><span id="out-dew">--</span> <span class="text-sm temp-unit-small">°F</span></p>
                                         <div id="scale-out-dew" class="flex gap-0.5 mt-2 h-1.5 w-full"></div>
                                     </div>
                                 </div>
@@ -347,7 +348,7 @@
                                 <div class="grid grid-cols-2 gap-6">
                                     <div>
                                         <p class="text-sm text-blue-200 mb-1">Solar Rad</p>
-                                        <p class="text-2xl font-semibold"><span id="solar-rad">--</span> <span class="text-sm text-blue-300">W/m┬▓</span></p>
+                                        <p class="text-2xl font-semibold"><span id="solar-rad">--</span> <span class="text-sm text-blue-300">W/m²</span></p>
                                         <div id="scale-solar" class="flex gap-0.5 mt-2 h-1.5 w-full"></div>
                                     </div>
                                     <div>
@@ -479,7 +480,7 @@
                                 <div class="w-16 h-16 rounded-full border-2 border-white/20 flex items-center justify-center relative">
                                     <i class="ph-fill ph-navigation-arrow text-2xl text-blue-400 transition-transform duration-700" id="wind-dir-icon" style="transform: rotate(0deg);"></i>
                                 </div>
-                                <p class="text-sm font-semibold mt-2" id="wind-dir-text">--┬░</p>
+                                <p class="text-sm font-semibold mt-2" id="wind-dir-text">--°</p>
                             </div>
                         </div>
                         <div class="pt-4 border-t border-white/10">
@@ -533,7 +534,7 @@
                                 <p class="text-sm text-blue-200 mb-1">Temperature</p>
                                 <p class="text-3xl font-bold">
                                     <span id="in-temp">--</span>
-                                    <span class="text-sm text-blue-300 font-medium temp-unit-small">┬░F</span>
+                                    <span class="text-sm text-blue-300 font-medium temp-unit-small">°F</span>
                                 </p>
                                 <div id="scale-in-temp" class="flex gap-0.5 mt-3 h-2 w-full"></div>
                             </div>
@@ -613,7 +614,7 @@
                         <thead>
                             <tr class="bg-white/5 border-b border-white/10">
                                 <th class="p-4 font-semibold text-blue-200">Time</th>
-                                <th class="p-4 font-semibold text-blue-200">Temp (<span class="hist-temp-unit">┬░C (┬░F)</span>)</th>
+                                <th class="p-4 font-semibold text-blue-200">Temp (<span class="hist-temp-unit">°C (°F)</span>)</th>
                                 <th class="p-4 font-semibold text-blue-200">Humidity</th>
                                 <th class="p-4 font-semibold text-blue-200">Wind (<span class="hist-wind-unit">km/h (mph)</span>)</th>
                                 <th class="p-4 font-semibold text-blue-200">Rain (<span class="hist-rain-unit">mm (in)</span>)</th>
@@ -754,7 +755,7 @@
 
         function fmtTempDualFromF(fVal, precision = 1) {
             if (!Number.isFinite(fVal)) return '--';
-            return `${fToC(fVal).toFixed(precision)}┬░C (${fVal.toFixed(precision)}┬░F)`;
+            return `${fToC(fVal).toFixed(precision)}°C (${fVal.toFixed(precision)}°F)`;
         }
 
         function fmtSpeedDualFromMph(mphVal, precision = 1) {
@@ -1016,7 +1017,7 @@
             const rainRate = Number(latest.rain_rate_inhr);
             if (Number.isFinite(outTempF)) {
                 safeSetText('out-temp', fToC(outTempF).toFixed(1));
-                safeSetText('out-temp-unit', `┬░C (${outTempF.toFixed(1)}┬░F)`);
+                safeSetText('out-temp-unit', `°C (${outTempF.toFixed(1)}°F)`);
                 safeSetText('in-temp', '--');
             }
             if (Number.isFinite(hum)) safeSetText('out-hum', hum.toFixed(0));
@@ -1066,7 +1067,7 @@
             const inTempF = parseFloat(getVal(d, 'indoor.temperature.value'));
 
             safeSetText('out-temp', Number.isFinite(outTempF) ? fToC(outTempF).toFixed(1) : '--');
-            safeSetText('out-temp-unit', Number.isFinite(outTempF) ? `┬░C (${outTempF.toFixed(1)}┬░F)` : '┬░C');
+            safeSetText('out-temp-unit', Number.isFinite(outTempF) ? `°C (${outTempF.toFixed(1)}°F)` : '°C');
             safeSetText('out-feels', fmtTempDualFromF(feelsF));
             safeSetText('out-dew', Number.isFinite(dewF) ? fToC(dewF).toFixed(1) : '--');
             safeSetText('in-temp', Number.isFinite(inTempF) ? fToC(inTempF).toFixed(1) : '--');
@@ -1088,7 +1089,7 @@
             const windDirText = document.getElementById('wind-dir-text');
             if (windDir !== '--') {
                 if (windIcon) windIcon.style.transform = `rotate(${windDir}deg)`;
-                if (windDirText) windDirText.innerHTML = `${windDir}┬░ <span class="text-xs text-blue-300 ml-1 font-bold">${getWindDirectionText(windDir)}</span>`;
+                if (windDirText) windDirText.innerHTML = `${windDir}° <span class="text-xs text-blue-300 ml-1 font-bold">${getWindDirectionText(windDir)}</span>`;
             }
 
             // --- RAIN ---
@@ -1198,11 +1199,11 @@
 
             function getSoilLabel(pct) {
                 if (isNaN(pct)) return { label: 'No sensor data', status: 'Unknown', cls: 'bg-gray-500/20 text-gray-300 border-gray-500/30' };
-                if (pct < 20) return { label: 'Very dry ÔÇö consider watering', status: 'Very Dry', cls: 'bg-orange-500/20 text-orange-200 border-orange-400/40' };
-                if (pct < 40) return { label: 'Dry ÔÇö soil moisture is low', status: 'Dry', cls: 'bg-yellow-500/20 text-yellow-200 border-yellow-400/40' };
-                if (pct < 60) return { label: 'Moist ÔÇö optimal range', status: 'Moist', cls: 'bg-green-500/20 text-green-200 border-green-400/40' };
-                if (pct < 80) return { label: 'Wet ÔÇö well saturated', status: 'Wet', cls: 'bg-blue-500/20 text-blue-200 border-blue-400/40' };
-                return { label: 'Saturated ÔÇö possible waterlogging', status: 'Saturated', cls: 'bg-indigo-500/20 text-indigo-200 border-indigo-400/40' };
+                if (pct < 20) return { label: 'Very dry — consider watering', status: 'Very Dry', cls: 'bg-orange-500/20 text-orange-200 border-orange-400/40' };
+                if (pct < 40) return { label: 'Dry — soil moisture is low', status: 'Dry', cls: 'bg-yellow-500/20 text-yellow-200 border-yellow-400/40' };
+                if (pct < 60) return { label: 'Moist — optimal range', status: 'Moist', cls: 'bg-green-500/20 text-green-200 border-green-400/40' };
+                if (pct < 80) return { label: 'Wet — well saturated', status: 'Wet', cls: 'bg-blue-500/20 text-blue-200 border-blue-400/40' };
+                return { label: 'Saturated — possible waterlogging', status: 'Saturated', cls: 'bg-indigo-500/20 text-indigo-200 border-indigo-400/40' };
             }
             const soilInfo = getSoilLabel(soilMoisture);
             const soilLabelEl = document.getElementById('soil-label');
@@ -1257,7 +1258,7 @@
             if (windChipEl) windChipEl.innerHTML = `<span class="chip-label">Wind</span><span class="chip-value">${fmtSpeedDualFromMph(windSpeed)}</span>`;
             if (uvChipEl) uvChipEl.innerHTML = `<span class="chip-label">UV</span><span class="chip-value">${isNaN(uvi) ? "--" : uvi.toFixed(1)}</span>`;
 
-            document.querySelectorAll('.temp-unit-small').forEach(el => el.textContent = '(┬░F)');
+            document.querySelectorAll('.temp-unit-small').forEach(el => el.textContent = '(°F)');
             document.querySelectorAll('.wind-unit-small').forEach(el => el.textContent = '(mph)');
             safeSetText('rain-unit', 'mm (in)');
             document.querySelectorAll('.rain-unit-small').forEach(el => el.textContent = '(in)');
@@ -1291,7 +1292,7 @@
                 const showTemp = (v) => {
                     if (v === null || v === undefined || isNaN(Number(v))) return '--';
                     const vf = Number(v);
-                    return `${fToC(vf).toFixed(1)}┬░C (${vf.toFixed(1)}┬░F)`;
+                    return `${fToC(vf).toFixed(1)}°C (${vf.toFixed(1)}°F)`;
                 };
                 if (statsTempHiLoEl) statsTempHiLoEl.textContent = `${showTemp(tempMax)} / ${showTemp(tempMin)}`;
                 if (statsTempAvgEl) statsTempAvgEl.textContent = showTemp(tempAvg);
@@ -1348,7 +1349,7 @@
                 if (aiStatusEl) {
                     const usingFallback = (res.model === 'local-fallback');
                     if (usingFallback) {
-                        aiStatusEl.textContent = 'AI provider is busy right now ÔÇö showing local forecast fallback.';
+                        aiStatusEl.textContent = 'AI provider is busy right now — showing local forecast fallback.';
                     } else if (res.cached) {
                         aiStatusEl.textContent = 'AI forecast updated (cached).';
                     } else {
@@ -1470,7 +1471,7 @@
         }
 
         function updateHistDOM() {
-            document.querySelectorAll('.hist-temp-unit').forEach(el => el.textContent = '┬░C (┬░F)');
+            document.querySelectorAll('.hist-temp-unit').forEach(el => el.textContent = '°C (°F)');
             document.querySelectorAll('.hist-wind-unit').forEach(el => el.textContent = 'km/h (mph)');
             document.querySelectorAll('.hist-rain-unit').forEach(el => el.textContent = 'mm (in)');
             if (!rawHistData || rawHistData.length === 0) return;
@@ -1561,7 +1562,7 @@
             const lightningData = rows.map((r) => { const v = parseFloat(r.lightning); return Number.isFinite(v) ? v : null; });
             const soilData = rows.map((r) => { const v = parseFloat(r.soil); return Number.isFinite(v) ? v : null; });
 
-            histCharts.temp     = buildHistoricChart('chart-temp',      labels, tempData,      currentOverlay.tempC,        'Temperature',       '#fb7185', (v) => `${Number(v).toFixed(1)}┬░C`);
+            histCharts.temp     = buildHistoricChart('chart-temp',      labels, tempData,      currentOverlay.tempC,        'Temperature',       '#fb7185', (v) => `${Number(v).toFixed(1)}°C`);
             histCharts.humidity = buildHistoricChart('chart-humidity',   labels, humData,       currentOverlay.humidity,     'Humidity',          '#60a5fa', (v) => `${Number(v).toFixed(1)}%`);
             histCharts.wind     = buildHistoricChart('chart-wind',       labels, windData,      currentOverlay.windKmh,      'Wind',              '#22d3ee', (v) => `${Number(v).toFixed(1)} km/h`);
             histCharts.rain     = buildHistoricChart('chart-rain',       labels, rainData,      currentOverlay.rainMm,       'Rain',              '#34d399', (v) => `${Number(v).toFixed(2)} mm`);
@@ -1606,6 +1607,135 @@
             setInterval(updateSatelliteImage, 5 * 60 * 1000);
         })();
 
+    </script>
+    <script>
+    // SKY RENDERER - Tingley, Leeds 53.75N 1.52W
+    (function () {
+        const canvas = document.getElementById('sky-canvas');
+        const ctx    = canvas.getContext('2d');
+        const LAT    = 53.75 * Math.PI / 180;
+        function solarData() {
+            const now=new Date(), doy=Math.floor((now-new Date(now.getFullYear(),0,0))/86400000);
+            const lh=now.getHours()+now.getMinutes()/60+now.getSeconds()/3600;
+            const decl=23.45*Math.sin((360/365*(doy-81))*Math.PI/180)*Math.PI/180;
+            const cosH=-Math.tan(LAT)*Math.tan(decl);
+            const ha=Math.acos(Math.max(-1,Math.min(1,cosH)))*180/Math.PI;
+            const rise=12-ha/15, set=12+ha/15;
+            const hourAngle=(lh-12)*15*Math.PI/180;
+            const sinAlt=Math.sin(LAT)*Math.sin(decl)+Math.cos(LAT)*Math.cos(decl)*Math.cos(hourAngle);
+            return {lh,rise,set,alt:Math.asin(sinAlt)*180/Math.PI};
+        }
+        function skyPhase(sd) {
+            const {lh,rise,set,alt}=sd, tD=rise-0.75, tK=set+0.75;
+            if(alt>6) return {phase:2,t:1};
+            if(lh>=tD&&lh<rise) return {phase:1,t:(lh-tD)/0.75};
+            if(lh>set&&lh<=tK) return {phase:3,t:(lh-set)/0.75};
+            return {phase:lh<12?0:4,t:1};
+        }
+        const lerp=(a,b,t)=>a+(b-a)*t;
+        const lerpC=(a,b,t)=>a.map((_,i)=>lerp(a[i],b[i],t));
+        const rgb=c=>`rgb(${c[0]|0},${c[1]|0},${c[2]|0})`;
+        const PAL={night:{z:[3,8,32],h:[8,16,50]},dawn:{z:[30,45,110],h:[195,105,65]},day:{z:[28,96,198],h:[120,185,238]},dusk:{z:[28,28,75],h:[210,85,40]}};
+        function skyGrad(phase,t,H) {
+            const src=phase===1?[PAL.night,PAL.dawn]:phase===2?[PAL.day,PAL.day]:phase===3?[PAL.day,PAL.dusk]:[PAL.dusk,PAL.night];
+            const pz=lerpC(src[0].z,src[1].z,phase===2?0:t), ph=lerpC(src[0].h,src[1].h,phase===2?0:t);
+            const g=ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,rgb(pz)); g.addColorStop(1,rgb(ph)); return g;
+        }
+        const STARS=Array.from({length:230},()=>({x:Math.random(),y:Math.random()*0.78,r:0.3+Math.random()*1.5,base:0.3+Math.random()*0.7,tw:Math.random()*Math.PI*2,spd:0.4+Math.random()*1.8}));
+        function drawStars(W,H,op) {
+            if(op<0.02) return;
+            const t=performance.now()/1000;
+            STARS.forEach(s=>{ctx.beginPath();ctx.arc(s.x*W,s.y*H,s.r,0,Math.PI*2);ctx.fillStyle=`rgba(255,248,238,${op*s.base*(0.65+0.35*Math.sin(s.tw+t*s.spd))})`;ctx.fill();});
+        }
+        function drawMoon(W,H,op) {
+            if(op<0.02) return;
+            const mx=W*0.79,my=H*0.16,r=Math.min(W,H)*0.066;
+            ctx.save();ctx.globalAlpha=op;
+            const g0=ctx.createRadialGradient(mx,my,r,mx,my,r*4);
+            g0.addColorStop(0,'rgba(210,225,255,0.14)');g0.addColorStop(1,'rgba(0,0,0,0)');
+            ctx.fillStyle=g0;ctx.beginPath();ctx.arc(mx,my,r*4,0,Math.PI*2);ctx.fill();
+            const gd=ctx.createRadialGradient(mx-r*0.28,my-r*0.28,r*0.05,mx,my,r);
+            gd.addColorStop(0,'#f5f4ec');gd.addColorStop(0.55,'#d8d5c4');gd.addColorStop(1,'#a8a590');
+            ctx.fillStyle=gd;ctx.beginPath();ctx.arc(mx,my,r,0,Math.PI*2);ctx.fill();
+            ctx.globalCompositeOperation='multiply';
+            [[0.28,0.12,0.44,0.36],[-0.22,0.28,0.32,0.26],[0.08,-0.32,0.24,0.19],[-0.05,0.45,0.18,0.14]].forEach(([dx,dy,w,h])=>{
+                const px=mx+dx*r,py=my+dy*r,gm=ctx.createRadialGradient(px,py,0,px,py,w*r);
+                gm.addColorStop(0,'rgba(118,115,105,0.52)');gm.addColorStop(1,'rgba(118,115,105,0)');
+                ctx.save();ctx.translate(px,py);ctx.scale(1,h/w);ctx.translate(-px,-py);
+                ctx.fillStyle=gm;ctx.beginPath();ctx.arc(px,py,w*r,0,Math.PI*2);ctx.fill();ctx.restore();
+            });
+            ctx.globalCompositeOperation='source-over';
+            [[-0.32,-0.38,0.11],[0.42,-0.12,0.085],[-0.12,0.42,0.095],[0.28,0.40,0.068],
+             [-0.48,0.22,0.078],[0.14,-0.52,0.058],[-0.25,0.05,0.055],[0.50,0.30,0.052]].forEach(([dx,dy,cr])=>{
+                const px=mx+dx*r,py=my+dy*r,pr=cr*r;
+                ctx.save();ctx.beginPath();ctx.arc(px,py,pr,0,Math.PI*2);ctx.clip();
+                const gc=ctx.createRadialGradient(px-pr*0.3,py-pr*0.3,0,px,py,pr);
+                gc.addColorStop(0,'rgba(195,193,180,0.8)');gc.addColorStop(0.65,'rgba(138,135,122,0.7)');gc.addColorStop(1,'rgba(72,70,62,0.9)');
+                ctx.fillStyle=gc;ctx.fill();ctx.restore();
+                ctx.strokeStyle='rgba(238,236,224,0.45)';ctx.lineWidth=pr*0.18;
+                ctx.beginPath();ctx.arc(px,py,pr,0,Math.PI*2);ctx.stroke();
+            });
+            ctx.globalAlpha=1;ctx.restore();
+        }
+        function makeCloud(W,H,seed) {
+            const rn=s=>{const x=Math.sin(s+1)*43758.5453123;return x-Math.floor(x);};
+            return {x:rn(seed*7+3)*W*1.6-W*0.3,y:H*(0.05+rn(seed*11+4)*0.52),w:55+rn(seed*13+5)*240,
+                    spd:(0.006+rn(seed*17+6)*0.026)*(rn(seed*19+7)<0.5?1:-1),alpha:0.52+rn(seed*23+8)*0.44,
+                    puffs:Array.from({length:5+((rn(seed*3+2)*5)|0)},(_,i)=>({dx:(rn(seed*31+i*7)-0.5)*2.2,dy:-rn(seed*37+i*11)*0.55,r:0.55+rn(seed*41+i*13)*0.85}))};
+        }
+        let clouds=[],W=0,H=0;
+        function initClouds(){clouds=Array.from({length:16},(_,i)=>makeCloud(W,H,i*89+17));}
+        function drawCloud(c,op) {
+            if(op<0.01) return;
+            ctx.save();ctx.globalAlpha=c.alpha*op;
+            c.puffs.forEach(p=>{const px=c.x+p.dx*c.w,py=c.y+p.dy*c.w*0.32,pr=p.r*c.w*0.36;
+                const g=ctx.createRadialGradient(px,py-pr*0.18,0,px,py,pr);
+                g.addColorStop(0,'rgba(255,255,255,0.96)');g.addColorStop(0.4,'rgba(242,246,252,0.78)');
+                g.addColorStop(0.75,'rgba(215,224,238,0.38)');g.addColorStop(1,'rgba(185,198,220,0)');
+                ctx.fillStyle=g;ctx.beginPath();ctx.ellipse(px,py,pr,pr*0.84,0,0,Math.PI*2);ctx.fill();});
+            ctx.globalAlpha=c.alpha*op*0.26;
+            c.puffs.forEach(p=>{const px=c.x+p.dx*c.w,py=c.y+p.dy*c.w*0.32+p.r*c.w*0.20,pr=p.r*c.w*0.30;
+                const gs=ctx.createRadialGradient(px,py,0,px,py,pr);
+                gs.addColorStop(0,'rgba(135,148,172,0.65)');gs.addColorStop(1,'rgba(135,148,172,0)');
+                ctx.fillStyle=gs;ctx.beginPath();ctx.ellipse(px,py,pr*1.15,pr*0.42,0,0,Math.PI*2);ctx.fill();});
+            ctx.restore();
+        }
+        function drawSun(W,H,op){
+            if(op<0.01) return;
+            const sd=solarData(),frac=Math.max(0.03,Math.min(0.92,1-(sd.alt+6)/80)),sx=W*0.73,sy=H*frac;
+            ctx.save();ctx.globalAlpha=op;
+            const sh=ctx.createRadialGradient(sx,sy,0,sx,sy,W*0.22);
+            sh.addColorStop(0,'rgba(255,250,190,0.22)');sh.addColorStop(1,'rgba(255,250,190,0)');
+            ctx.fillStyle=sh;ctx.beginPath();ctx.arc(sx,sy,W*0.22,0,Math.PI*2);ctx.fill();
+            const sg=ctx.createRadialGradient(sx,sy,0,sx,sy,W*0.034);
+            sg.addColorStop(0,'rgba(255,255,220,1)');sg.addColorStop(0.5,'rgba(255,228,60,0.95)');sg.addColorStop(1,'rgba(255,180,0,0)');
+            ctx.fillStyle=sg;ctx.beginPath();ctx.arc(sx,sy,W*0.034,0,Math.PI*2);ctx.fill();
+            ctx.restore();
+        }
+        function resize(){W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;initClouds();}
+        window.addEventListener('resize',resize);resize();
+        let lastT=0;
+        function frame(ts){
+            const dt=Math.min((ts-lastT)/1000,0.05);lastT=ts;
+            const sd=solarData(),{phase,t}=skyPhase(sd);
+            const isNight=phase===0||phase===4,isDawn=phase===1,isDusk=phase===3;
+            ctx.fillStyle=skyGrad(phase,t,H);ctx.fillRect(0,0,W,H);
+            if(isDawn||isDusk){
+                const col=isDawn?'rgba(255,115,55,':'rgba(220,75,20,';
+                const hg=ctx.createLinearGradient(0,H*0.38,0,H);
+                hg.addColorStop(0,col+'0)');hg.addColorStop(1,col+(0.24*t)+')');
+                ctx.fillStyle=hg;ctx.fillRect(0,H*0.38,W,H*0.62);
+            }
+            const nightOp=isNight?1:isDawn?(1-t):isDusk?t:0;
+            drawStars(W,H,nightOp);drawMoon(W,H,nightOp*0.94);
+            const sunOp=phase===2?1:isDawn?t:isDusk?(1-t):0;
+            drawSun(W,H,sunOp);
+            const cloudOp=isNight?(0.06+0.03*Math.sin(ts/9000)):isDawn?lerp(0.08,1,t):isDusk?lerp(1,0.08,t):1;
+            clouds.forEach(c=>{c.x+=c.spd*W*dt;if(c.x>W*1.35)c.x=-c.w*1.5;if(c.x<-c.w*1.5)c.x=W*1.35;drawCloud(c,cloudOp);});
+            requestAnimationFrame(frame);
+        }
+        requestAnimationFrame(frame);
+    })();
     </script>
 </body>
 </html>
