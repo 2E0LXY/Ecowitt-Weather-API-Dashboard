@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -316,7 +316,7 @@
                             <div>
                                 <div class="flex items-end gap-2 mb-2">
                                     <span class="text-6xl font-bold tracking-tighter" id="out-temp">--</span>
-                                    <span class="text-2xl text-blue-300 font-medium pb-1" id="out-temp-unit">°F</span>
+                                    <span class="text-2xl text-blue-300 font-medium pb-1" id="out-temp-unit">┬░F</span>
                                 </div>
                                 <p class="text-lg opacity-90 mb-4">Feels like: <span id="out-feels" class="font-semibold">--</span></p>
                                 
@@ -336,7 +336,7 @@
                                     </div>
                                     <div>
                                         <p class="text-sm text-blue-200 mb-1">Dew Point</p>
-                                        <p class="text-xl font-semibold"><span id="out-dew">--</span> <span class="text-sm temp-unit-small">°F</span></p>
+                                        <p class="text-xl font-semibold"><span id="out-dew">--</span> <span class="text-sm temp-unit-small">┬░F</span></p>
                                         <div id="scale-out-dew" class="flex gap-0.5 mt-2 h-1.5 w-full"></div>
                                     </div>
                                 </div>
@@ -347,7 +347,7 @@
                                 <div class="grid grid-cols-2 gap-6">
                                     <div>
                                         <p class="text-sm text-blue-200 mb-1">Solar Rad</p>
-                                        <p class="text-2xl font-semibold"><span id="solar-rad">--</span> <span class="text-sm text-blue-300">W/m²</span></p>
+                                        <p class="text-2xl font-semibold"><span id="solar-rad">--</span> <span class="text-sm text-blue-300">W/m┬▓</span></p>
                                         <div id="scale-solar" class="flex gap-0.5 mt-2 h-1.5 w-full"></div>
                                     </div>
                                     <div>
@@ -479,7 +479,7 @@
                                 <div class="w-16 h-16 rounded-full border-2 border-white/20 flex items-center justify-center relative">
                                     <i class="ph-fill ph-navigation-arrow text-2xl text-blue-400 transition-transform duration-700" id="wind-dir-icon" style="transform: rotate(0deg);"></i>
                                 </div>
-                                <p class="text-sm font-semibold mt-2" id="wind-dir-text">--°</p>
+                                <p class="text-sm font-semibold mt-2" id="wind-dir-text">--┬░</p>
                             </div>
                         </div>
                         <div class="pt-4 border-t border-white/10">
@@ -533,7 +533,7 @@
                                 <p class="text-sm text-blue-200 mb-1">Temperature</p>
                                 <p class="text-3xl font-bold">
                                     <span id="in-temp">--</span>
-                                    <span class="text-sm text-blue-300 font-medium temp-unit-small">°F</span>
+                                    <span class="text-sm text-blue-300 font-medium temp-unit-small">┬░F</span>
                                 </p>
                                 <div id="scale-in-temp" class="flex gap-0.5 mt-3 h-2 w-full"></div>
                             </div>
@@ -613,7 +613,7 @@
                         <thead>
                             <tr class="bg-white/5 border-b border-white/10">
                                 <th class="p-4 font-semibold text-blue-200">Time</th>
-                                <th class="p-4 font-semibold text-blue-200">Temp (<span class="hist-temp-unit">°C (°F)</span>)</th>
+                                <th class="p-4 font-semibold text-blue-200">Temp (<span class="hist-temp-unit">┬░C (┬░F)</span>)</th>
                                 <th class="p-4 font-semibold text-blue-200">Humidity</th>
                                 <th class="p-4 font-semibold text-blue-200">Wind (<span class="hist-wind-unit">km/h (mph)</span>)</th>
                                 <th class="p-4 font-semibold text-blue-200">Rain (<span class="hist-rain-unit">mm (in)</span>)</th>
@@ -754,7 +754,7 @@
 
         function fmtTempDualFromF(fVal, precision = 1) {
             if (!Number.isFinite(fVal)) return '--';
-            return `${fToC(fVal).toFixed(precision)}°C (${fVal.toFixed(precision)}°F)`;
+            return `${fToC(fVal).toFixed(precision)}┬░C (${fVal.toFixed(precision)}┬░F)`;
         }
 
         function fmtSpeedDualFromMph(mphVal, precision = 1) {
@@ -1016,7 +1016,7 @@
             const rainRate = Number(latest.rain_rate_inhr);
             if (Number.isFinite(outTempF)) {
                 safeSetText('out-temp', fToC(outTempF).toFixed(1));
-                safeSetText('out-temp-unit', `°C (${outTempF.toFixed(1)}°F)`);
+                safeSetText('out-temp-unit', `┬░C (${outTempF.toFixed(1)}┬░F)`);
                 safeSetText('in-temp', '--');
             }
             if (Number.isFinite(hum)) safeSetText('out-hum', hum.toFixed(0));
@@ -1066,7 +1066,7 @@
             const inTempF = parseFloat(getVal(d, 'indoor.temperature.value'));
 
             safeSetText('out-temp', Number.isFinite(outTempF) ? fToC(outTempF).toFixed(1) : '--');
-            safeSetText('out-temp-unit', Number.isFinite(outTempF) ? `°C (${outTempF.toFixed(1)}°F)` : '°C');
+            safeSetText('out-temp-unit', Number.isFinite(outTempF) ? `┬░C (${outTempF.toFixed(1)}┬░F)` : '┬░C');
             safeSetText('out-feels', fmtTempDualFromF(feelsF));
             safeSetText('out-dew', Number.isFinite(dewF) ? fToC(dewF).toFixed(1) : '--');
             safeSetText('in-temp', Number.isFinite(inTempF) ? fToC(inTempF).toFixed(1) : '--');
@@ -1088,7 +1088,7 @@
             const windDirText = document.getElementById('wind-dir-text');
             if (windDir !== '--') {
                 if (windIcon) windIcon.style.transform = `rotate(${windDir}deg)`;
-                if (windDirText) windDirText.innerHTML = `${windDir}° <span class="text-xs text-blue-300 ml-1 font-bold">${getWindDirectionText(windDir)}</span>`;
+                if (windDirText) windDirText.innerHTML = `${windDir}┬░ <span class="text-xs text-blue-300 ml-1 font-bold">${getWindDirectionText(windDir)}</span>`;
             }
 
             // --- RAIN ---
@@ -1198,11 +1198,11 @@
 
             function getSoilLabel(pct) {
                 if (isNaN(pct)) return { label: 'No sensor data', status: 'Unknown', cls: 'bg-gray-500/20 text-gray-300 border-gray-500/30' };
-                if (pct < 20) return { label: 'Very dry — consider watering', status: 'Very Dry', cls: 'bg-orange-500/20 text-orange-200 border-orange-400/40' };
-                if (pct < 40) return { label: 'Dry — soil moisture is low', status: 'Dry', cls: 'bg-yellow-500/20 text-yellow-200 border-yellow-400/40' };
-                if (pct < 60) return { label: 'Moist — optimal range', status: 'Moist', cls: 'bg-green-500/20 text-green-200 border-green-400/40' };
-                if (pct < 80) return { label: 'Wet — well saturated', status: 'Wet', cls: 'bg-blue-500/20 text-blue-200 border-blue-400/40' };
-                return { label: 'Saturated — possible waterlogging', status: 'Saturated', cls: 'bg-indigo-500/20 text-indigo-200 border-indigo-400/40' };
+                if (pct < 20) return { label: 'Very dry ÔÇö consider watering', status: 'Very Dry', cls: 'bg-orange-500/20 text-orange-200 border-orange-400/40' };
+                if (pct < 40) return { label: 'Dry ÔÇö soil moisture is low', status: 'Dry', cls: 'bg-yellow-500/20 text-yellow-200 border-yellow-400/40' };
+                if (pct < 60) return { label: 'Moist ÔÇö optimal range', status: 'Moist', cls: 'bg-green-500/20 text-green-200 border-green-400/40' };
+                if (pct < 80) return { label: 'Wet ÔÇö well saturated', status: 'Wet', cls: 'bg-blue-500/20 text-blue-200 border-blue-400/40' };
+                return { label: 'Saturated ÔÇö possible waterlogging', status: 'Saturated', cls: 'bg-indigo-500/20 text-indigo-200 border-indigo-400/40' };
             }
             const soilInfo = getSoilLabel(soilMoisture);
             const soilLabelEl = document.getElementById('soil-label');
@@ -1257,7 +1257,7 @@
             if (windChipEl) windChipEl.innerHTML = `<span class="chip-label">Wind</span><span class="chip-value">${fmtSpeedDualFromMph(windSpeed)}</span>`;
             if (uvChipEl) uvChipEl.innerHTML = `<span class="chip-label">UV</span><span class="chip-value">${isNaN(uvi) ? "--" : uvi.toFixed(1)}</span>`;
 
-            document.querySelectorAll('.temp-unit-small').forEach(el => el.textContent = '(°F)');
+            document.querySelectorAll('.temp-unit-small').forEach(el => el.textContent = '(┬░F)');
             document.querySelectorAll('.wind-unit-small').forEach(el => el.textContent = '(mph)');
             safeSetText('rain-unit', 'mm (in)');
             document.querySelectorAll('.rain-unit-small').forEach(el => el.textContent = '(in)');
@@ -1291,7 +1291,7 @@
                 const showTemp = (v) => {
                     if (v === null || v === undefined || isNaN(Number(v))) return '--';
                     const vf = Number(v);
-                    return `${fToC(vf).toFixed(1)}°C (${vf.toFixed(1)}°F)`;
+                    return `${fToC(vf).toFixed(1)}┬░C (${vf.toFixed(1)}┬░F)`;
                 };
                 if (statsTempHiLoEl) statsTempHiLoEl.textContent = `${showTemp(tempMax)} / ${showTemp(tempMin)}`;
                 if (statsTempAvgEl) statsTempAvgEl.textContent = showTemp(tempAvg);
@@ -1348,7 +1348,7 @@
                 if (aiStatusEl) {
                     const usingFallback = (res.model === 'local-fallback');
                     if (usingFallback) {
-                        aiStatusEl.textContent = 'AI provider is busy right now — showing local forecast fallback.';
+                        aiStatusEl.textContent = 'AI provider is busy right now ÔÇö showing local forecast fallback.';
                     } else if (res.cached) {
                         aiStatusEl.textContent = 'AI forecast updated (cached).';
                     } else {
@@ -1470,7 +1470,7 @@
         }
 
         function updateHistDOM() {
-            document.querySelectorAll('.hist-temp-unit').forEach(el => el.textContent = '°C (°F)');
+            document.querySelectorAll('.hist-temp-unit').forEach(el => el.textContent = '┬░C (┬░F)');
             document.querySelectorAll('.hist-wind-unit').forEach(el => el.textContent = 'km/h (mph)');
             document.querySelectorAll('.hist-rain-unit').forEach(el => el.textContent = 'mm (in)');
             if (!rawHistData || rawHistData.length === 0) return;
@@ -1561,7 +1561,7 @@
             const lightningData = rows.map((r) => { const v = parseFloat(r.lightning); return Number.isFinite(v) ? v : null; });
             const soilData = rows.map((r) => { const v = parseFloat(r.soil); return Number.isFinite(v) ? v : null; });
 
-            histCharts.temp     = buildHistoricChart('chart-temp',      labels, tempData,      currentOverlay.tempC,        'Temperature',       '#fb7185', (v) => `${Number(v).toFixed(1)}°C`);
+            histCharts.temp     = buildHistoricChart('chart-temp',      labels, tempData,      currentOverlay.tempC,        'Temperature',       '#fb7185', (v) => `${Number(v).toFixed(1)}┬░C`);
             histCharts.humidity = buildHistoricChart('chart-humidity',   labels, humData,       currentOverlay.humidity,     'Humidity',          '#60a5fa', (v) => `${Number(v).toFixed(1)}%`);
             histCharts.wind     = buildHistoricChart('chart-wind',       labels, windData,      currentOverlay.windKmh,      'Wind',              '#22d3ee', (v) => `${Number(v).toFixed(1)} km/h`);
             histCharts.rain     = buildHistoricChart('chart-rain',       labels, rainData,      currentOverlay.rainMm,       'Rain',              '#34d399', (v) => `${Number(v).toFixed(2)} mm`);

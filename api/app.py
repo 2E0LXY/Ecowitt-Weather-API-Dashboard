@@ -135,11 +135,10 @@ def init_db():
             """
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_weather_snapshots_captured_at ON weather_snapshots(captured_at)")
-        # Migration: add soil_moisture_pct to tables created before this column existed
         try:
             conn.execute("ALTER TABLE weather_snapshots ADD COLUMN soil_moisture_pct REAL")
         except sqlite3.OperationalError:
-            pass  # Column already exists
+            pass
         conn.commit()
 
 
@@ -165,18 +164,15 @@ def local_fallback_forecast(stats_24, trend_24):
     latest = (stats_24 or {}).get("latest", {}) if isinstance(stats_24, dict) else {}
     summary = (stats_24 or {}).get("summary", {}) if isinstance(stats_24, dict) else {}
     overall = (trend_24 or {}).get("overall", "steady") if isinstance(trend_24, dict) else "steady"
-
     temp_f = latest.get("outdoor_temp_f")
     hum = latest.get("humidity_pct")
     wind_mph = latest.get("wind_mph")
     rain_rate = latest.get("rain_rate_inhr")
     uv = latest.get("uv_index")
-
     temp_avg = (summary.get("temperature_f") or {}).get("avg")
     hum_avg = (summary.get("humidity_pct") or {}).get("avg")
     wind_avg = (summary.get("wind_mph") or {}).get("avg")
     wind_max = (summary.get("wind_mph") or {}).get("max")
-
     return {
         "summary_24h": (
             f"Last 24h (local DB): average temperature {fmt_temp_dual(temp_avg)}, average humidity {hum_avg}%, "
@@ -213,7 +209,6 @@ async def fetch_current_from_ecowitt():
         raise HTTPException(status_code=502, detail=f"Ecowitt request error: {exc}") from exc
     except ValueError as exc:
         raise HTTPException(status_code=502, detail="Ecowitt returned invalid JSON") from exc
-
     if payload.get("code") != 0:
         raise HTTPException(status_code=502, detail=f"Ecowitt API error: {payload.get('msg', 'Unknown')}")
     return payload
@@ -239,12 +234,7 @@ async def call_gemini_forecast(context_payload, satellite_ai_images=None):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
     parts = [{"text": prompt}]
     for item in satellite_ai_images:
-        parts.append({
-            "inline_data": {
-                "mime_type": item["mime_type"],
-                "data": item["base64"],
-            }
-        })
+        parts.append({"inline_data": {"mime_type": item["mime_type"], "data": item["base64"]}})
     body = {"contents": [{"parts": parts}]}
     try:
         async with httpx.AsyncClient(timeout=90.0) as client:
@@ -257,67 +247,36 @@ async def call_gemini_forecast(context_payload, satellite_ai_images=None):
         raise HTTPException(status_code=502, detail=f"Gemini request error: {exc}") from exc
     except ValueError as exc:
         raise HTTPException(status_code=502, detail="Gemini returned invalid JSON") from exc
-
-    text = (
-        payload.get("candidates", [{}])[0]
-        .get("content", {})
-        .get("parts", [{}])[0]
-        .get("text", "")
-        .strip()
-    )
+    text = (payload.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "").strip())
     if not text:
         raise HTTPException(status_code=502, detail="Gemini returned empty response")
     cleaned = text.strip()
     if cleaned.startswith("```"):
-        cleaned = cleaned.strip("`")
-        cleaned = cleaned.replace("json", "", 1).strip()
+        cleaned = cleaned.strip("`").replace("json", "", 1).strip()
     try:
         return json.loads(cleaned)
     except ValueError:
-        return {
-            "summary_24h": text,
-            "forecast_24h": "Forecast parsing fallback. Review model output format.",
-            "comfort_outlook": "unknown",
-            "risks": [],
-            "confidence": "low",
-        }
+        return {"summary_24h": text, "forecast_24h": "Forecast parsing fallback.", "comfort_outlook": "unknown", "risks": [], "confidence": "low"}
 
 
 async def call_openai_compatible_forecast(context_payload, base_url, api_key, model_name, provider_name):
     if not api_key:
         raise HTTPException(status_code=500, detail=f"Missing {provider_name} API key")
-
     prompt = (
         "You are a weather assistant. Use ONLY the provided weather data.\n"
-        "Task:\n"
-        "1) Summarize what weather has done over the last 24 hours.\n"
-        "2) Give a practical next-24-hours forecast based on trend extrapolation.\n"
-        "3) Mention confidence level (low/medium/high) and why.\n"
-        "4) Return strict JSON with keys: summary_24h, forecast_24h, comfort_outlook, risks, confidence.\n"
-        "5) Use metric-first units with imperial in brackets.\n"
-        "Keep text concise and plain English for a dashboard.\n\n"
+        "Task:\n1) Summarize last 24h weather.\n2) Forecast next 24h.\n"
+        "3) Confidence level (low/medium/high) and why.\n"
+        "4) Return strict JSON: summary_24h, forecast_24h, comfort_outlook, risks, confidence.\n"
+        "5) Metric-first units with imperial in brackets.\n\n"
         f"DATA:\n{json.dumps(context_payload, ensure_ascii=True)}"
     )
-
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     if provider_name == "openrouter":
         headers["HTTP-Referer"] = "https://2e0lxy.uk/weather-dashboard"
         headers["X-Title"] = "Ecowitt Weather Dashboard"
-
-    body = {
-        "model": model_name,
-        "messages": [
-            {"role": "system", "content": "You generate concise structured weather forecast JSON."},
-            {"role": "user", "content": prompt},
-        ],
-        "temperature": 0.4,
-    }
+    body = {"model": model_name, "messages": [{"role": "system", "content": "You generate concise structured weather forecast JSON."}, {"role": "user", "content": prompt}], "temperature": 0.4}
     if provider_name != "openrouter":
         body["response_format"] = {"type": "json_object"}
-
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(f"{base_url}/chat/completions", headers=headers, json=body)
@@ -327,85 +286,43 @@ async def call_openai_compatible_forecast(context_payload, base_url, api_key, mo
         raise HTTPException(status_code=502, detail=f"{provider_name} HTTP error {exc.response.status_code}") from exc
     except httpx.RequestError as exc:
         raise HTTPException(status_code=502, detail=f"{provider_name} request error: {exc}") from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=502, detail=f"{provider_name} returned invalid JSON") from exc
-
-    content = ""
-    try:
-        content = payload["choices"][0]["message"]["content"].strip()
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"{provider_name} response parse error") from exc
-
+    content = payload["choices"][0]["message"]["content"].strip()
     if not content:
         raise HTTPException(status_code=502, detail=f"{provider_name} returned empty response")
-
     try:
         return json.loads(content)
     except ValueError:
-        return {
-            "summary_24h": content,
-            "forecast_24h": "Forecast parsing fallback. Review model output format.",
-            "comfort_outlook": "unknown",
-            "risks": [],
-            "confidence": "low",
-        }
+        return {"summary_24h": content, "forecast_24h": "Fallback.", "comfort_outlook": "unknown", "risks": [], "confidence": "low"}
 
 
 async def call_backup_llm_forecast(context_payload):
-    provider = BACKUP_LLM_PROVIDER
-    if provider == "openai":
-        return await call_openai_compatible_forecast(
-            context_payload=context_payload,
-            base_url="https://api.openai.com/v1",
-            api_key=OPENAI_API_KEY,
-            model_name=OPENAI_MODEL,
-            provider_name="openai",
-        ), OPENAI_MODEL
-    return await call_openai_compatible_forecast(
-        context_payload=context_payload,
-        base_url="https://openrouter.ai/api/v1",
-        api_key=OPENROUTER_API_KEY,
-        model_name=OPENROUTER_MODEL,
-        provider_name="openrouter",
-    ), OPENROUTER_MODEL
+    if BACKUP_LLM_PROVIDER == "openai":
+        return await call_openai_compatible_forecast(context_payload, "https://api.openai.com/v1", OPENAI_API_KEY, OPENAI_MODEL, "openai"), OPENAI_MODEL
+    return await call_openai_compatible_forecast(context_payload, "https://openrouter.ai/api/v1", OPENROUTER_API_KEY, OPENROUTER_MODEL, "openrouter"), OPENROUTER_MODEL
 
 
 async def call_openrouter_chain_forecast(context_payload):
-    models = [m.strip() for m in OPENROUTER_MODELS.split(",") if m.strip()]
-    if not models:
-        models = [OPENROUTER_MODEL]
-
+    models = [m.strip() for m in OPENROUTER_MODELS.split(",") if m.strip()] or [OPENROUTER_MODEL]
     last_error = None
     for model_name in models:
         try:
-            ai = await call_openai_compatible_forecast(
-                context_payload=context_payload,
-                base_url="https://openrouter.ai/api/v1",
-                api_key=OPENROUTER_API_KEY,
-                model_name=model_name,
-                provider_name="openrouter",
-            )
+            ai = await call_openai_compatible_forecast(context_payload, "https://openrouter.ai/api/v1", OPENROUTER_API_KEY, model_name, "openrouter")
             return ai, model_name
         except HTTPException as exc:
             last_error = exc
-            continue
-
     if last_error:
         raise last_error
-    raise HTTPException(status_code=502, detail="openrouter chain failed with no models configured")
+    raise HTTPException(status_code=502, detail="openrouter chain failed")
 
 
 def extract_snapshot(payload):
     data = payload.get("data", {}) if isinstance(payload, dict) else {}
-
     def get(*path):
         cur = data
         for key in path:
-            if not isinstance(cur, dict):
-                return None
+            if not isinstance(cur, dict): return None
             cur = cur.get(key)
         return cur
-
     temp_f = to_float(get("outdoor", "temperature", "value"))
     humidity = to_float(get("outdoor", "humidity", "value"))
     pressure = to_float(get("pressure", "relative", "value"))
@@ -414,12 +331,8 @@ def extract_snapshot(payload):
     uv = to_float(get("solar_and_uvi", "uvi", "value"))
     soil_moisture = to_float(get("soil_ch1", "soilmoisture", "value"))
     return {
-        "outdoor_temp_f": temp_f,
-        "humidity_pct": humidity,
-        "pressure_inhg": pressure,
-        "wind_mph": wind,
-        "rain_rate_inhr": rain_rate,
-        "uv_index": uv,
+        "outdoor_temp_f": temp_f, "humidity_pct": humidity, "pressure_inhg": pressure,
+        "wind_mph": wind, "rain_rate_inhr": rain_rate, "uv_index": uv,
         "comfort_score": weather_comfort_score(temp_f, humidity, wind, rain_rate, uv),
         "soil_moisture_pct": soil_moisture,
     }
@@ -435,17 +348,9 @@ def save_snapshot(snapshot):
                 wind_mph, rain_rate_inhr, uv_index, comfort_score, soil_moisture_pct
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (
-                captured_at,
-                snapshot.get("outdoor_temp_f"),
-                snapshot.get("humidity_pct"),
-                snapshot.get("pressure_inhg"),
-                snapshot.get("wind_mph"),
-                snapshot.get("rain_rate_inhr"),
-                snapshot.get("uv_index"),
-                snapshot.get("comfort_score"),
-                snapshot.get("soil_moisture_pct"),
-            ),
+            (captured_at, snapshot.get("outdoor_temp_f"), snapshot.get("humidity_pct"),
+             snapshot.get("pressure_inhg"), snapshot.get("wind_mph"), snapshot.get("rain_rate_inhr"),
+             snapshot.get("uv_index"), snapshot.get("comfort_score"), snapshot.get("soil_moisture_pct")),
         )
         conn.commit()
     return captured_at
@@ -454,32 +359,27 @@ def save_snapshot(snapshot):
 def satellite_absolute_url(path_or_url):
     return urljoin(f"{SATELLITE_BASE_URL.rstrip('/')}/", unescape(path_or_url).lstrip("/"))
 
-
 def satellite_proxy_url(image_url):
     return f"/api/satellite/image?url={quote(image_url, safe='')}"
-
 
 def parse_capture_cards(html):
     cards = []
     for match in re.finditer(r'<div class="card bg-light.*?</div>\s*</div>', html, flags=re.DOTALL):
         block = match.group(0)
         pass_match = re.search(r'href="(/captures/listImages\?pass_id=(\d+))"', block)
-        if not pass_match:
-            continue
+        if not pass_match: continue
         title_match = re.search(r'<h5 class="card-title">\s*(.*?)\s*</h5>', block, flags=re.DOTALL)
         pass_start_match = re.search(r'<strong>Pass Start:\s*</strong>\s*([^<]+)<', block, flags=re.DOTALL)
         direction_match = re.search(r'<strong>Direction:\s*</strong>\s*([^<]+)<', block, flags=re.DOTALL)
         elevation_match = re.search(r'<strong>Elevation:\s*</strong>\s*([^<]+)<', block, flags=re.DOTALL)
         cards.append({
-            "pass_id": pass_match.group(2),
-            "detail_path": pass_match.group(1),
+            "pass_id": pass_match.group(2), "detail_path": pass_match.group(1),
             "satellite": unescape(title_match.group(1)).strip() if title_match else "Unknown",
             "pass_start": " ".join(unescape(pass_start_match.group(1)).split()) if pass_start_match else "--",
             "direction": " ".join(unescape(direction_match.group(1)).split()) if direction_match else "--",
             "elevation": " ".join(unescape(elevation_match.group(1)).split()) if elevation_match else "--",
         })
     return cards
-
 
 def parse_capture_images(html):
     images = []
@@ -488,43 +388,23 @@ def parse_capture_images(html):
         filename = url.rsplit("/", 1)[-1]
         name = filename.rsplit(".", 1)[0]
         parts = name.split("-")
-        enhancement = name
-        if len(parts) >= 6:
-            enhancement = "-".join(parts[5:])
-        images.append({
-            "url": url,
-            "proxy_url": satellite_proxy_url(url),
-            "filename": filename,
-            "enhancement": enhancement,
-        })
+        enhancement = "-".join(parts[5:]) if len(parts) >= 6 else name
+        images.append({"url": url, "proxy_url": satellite_proxy_url(url), "filename": filename, "enhancement": enhancement})
     return images
 
-
 def choose_satellite_image(images):
-    if not images:
-        return None
-    preferences = [
-        "equidistant_221_composite",
-        "equidistant_321_composite",
-        "composite",
-        "equidistant_221",
-        "equidistant_321",
-    ]
-    for preference in preferences:
-        for image in images:
-            if preference in image["filename"]:
-                return image
+    if not images: return None
+    for pref in ["equidistant_221_composite","equidistant_321_composite","composite","equidistant_221","equidistant_321"]:
+        for img in images:
+            if pref in img["filename"]: return img
     return images[0]
 
-
 def choose_satellite_image_by_enhancement(images, enhancement):
-    if not images:
-        return None
+    if not images: return None
     wanted = (enhancement or "").strip()
     if wanted:
-        for image in images:
-            if image.get("enhancement") == wanted or wanted in image.get("filename", ""):
-                return image
+        for img in images:
+            if img.get("enhancement") == wanted or wanted in img.get("filename", ""): return img
     return choose_satellite_image(images)
 
 
@@ -535,82 +415,49 @@ async def fetch_latest_satellite_payload(force=False):
         cached["cached"] = True
         cached["cache_age_seconds"] = int(now - _satellite_cache["ts"])
         return cached
-
     try:
         async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
             captures_resp = await client.get(satellite_absolute_url("/captures?page_no=1"))
             captures_resp.raise_for_status()
             capture_cards = parse_capture_cards(captures_resp.text)
-            if not capture_cards:
-                raise HTTPException(status_code=502, detail="No satellite captures found")
-
+            if not capture_cards: raise HTTPException(status_code=502, detail="No satellite captures found")
             latest = capture_cards[0]
             detail_resp = await client.get(satellite_absolute_url(latest["detail_path"]))
             detail_resp.raise_for_status()
             images = parse_capture_images(detail_resp.text)
-    except HTTPException:
-        raise
-    except httpx.HTTPStatusError as exc:
-        raise HTTPException(status_code=502, detail=f"Satellite server HTTP error {exc.response.status_code}") from exc
-    except httpx.RequestError as exc:
-        raise HTTPException(status_code=502, detail=f"Satellite server request error: {exc}") from exc
-
+    except HTTPException: raise
+    except httpx.HTTPStatusError as exc: raise HTTPException(status_code=502, detail=f"Satellite HTTP error {exc.response.status_code}") from exc
+    except httpx.RequestError as exc: raise HTTPException(status_code=502, detail=f"Satellite request error: {exc}") from exc
     chosen = choose_satellite_image(images)
-    if not chosen:
-        raise HTTPException(status_code=502, detail="No satellite images found in latest capture")
-
-    payload = {
-        "status": "ok",
-        "source": SATELLITE_BASE_URL,
-        "cached": False,
-        "cache_age_seconds": 0,
-        "capture": latest,
-        "image": chosen,
-        "images": images,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    }
+    if not chosen: raise HTTPException(status_code=502, detail="No satellite images found")
+    payload = {"status": "ok", "source": SATELLITE_BASE_URL, "cached": False, "cache_age_seconds": 0,
+               "capture": latest, "image": chosen, "images": images, "updated_at": datetime.now(timezone.utc).isoformat()}
     _satellite_cache["payload"] = deepcopy(payload)
     _satellite_cache["ts"] = time.time()
     return payload
 
 
 async def fetch_satellite_ai_images():
-    if not SATELLITE_AI_IMAGES_ENABLED or SATELLITE_AI_IMAGE_COUNT <= 0:
-        return []
-
+    if not SATELLITE_AI_IMAGES_ENABLED or SATELLITE_AI_IMAGE_COUNT <= 0: return []
     ai_images = []
     async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
         captures_resp = await client.get(satellite_absolute_url("/captures?page_no=1"))
         captures_resp.raise_for_status()
         capture_cards = parse_capture_cards(captures_resp.text)
-
         for capture in capture_cards:
-            if len(ai_images) >= SATELLITE_AI_IMAGE_COUNT:
-                break
-
+            if len(ai_images) >= SATELLITE_AI_IMAGE_COUNT: break
             detail_resp = await client.get(satellite_absolute_url(capture["detail_path"]))
             detail_resp.raise_for_status()
             images = parse_capture_images(detail_resp.text)
             chosen = choose_satellite_image_by_enhancement(images, SATELLITE_AI_IMAGE_ENHANCEMENT)
-            if not chosen:
-                continue
-
+            if not chosen: continue
             image_resp = await client.get(chosen["url"])
             image_resp.raise_for_status()
             content = image_resp.content
-            if len(content) > SATELLITE_AI_MAX_IMAGE_BYTES:
-                continue
-
+            if len(content) > SATELLITE_AI_MAX_IMAGE_BYTES: continue
             mime_type = image_resp.headers.get("content-type", "image/jpeg").split(";", 1)[0].strip()
-            ai_images.append({
-                "capture": capture,
-                "image": chosen,
-                "mime_type": mime_type,
-                "bytes": content,
-                "size_bytes": len(content),
-                "base64": base64.b64encode(content).decode("ascii"),
-            })
-
+            ai_images.append({"capture": capture, "image": chosen, "mime_type": mime_type, "bytes": content,
+                               "size_bytes": len(content), "base64": base64.b64encode(content).decode("ascii")})
     return list(reversed(ai_images))
 
 
@@ -632,24 +479,15 @@ async def api_satellite_latest(force: bool = False):
 @app.get("/api/satellite/image")
 async def api_satellite_image(url: str = Query(...)):
     image_url = unquote(url)
-    allowed_prefix = f"{SATELLITE_BASE_URL.rstrip('/')}/images/"
-    if not image_url.startswith(allowed_prefix):
+    if not image_url.startswith(f"{SATELLITE_BASE_URL.rstrip('/')}/images/"):
         raise HTTPException(status_code=400, detail="Invalid satellite image URL")
     try:
         async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
             resp = await client.get(image_url)
             resp.raise_for_status()
-    except httpx.HTTPStatusError as exc:
-        raise HTTPException(status_code=502, detail=f"Satellite image HTTP error {exc.response.status_code}") from exc
-    except httpx.RequestError as exc:
-        raise HTTPException(status_code=502, detail=f"Satellite image request error: {exc}") from exc
-
-    content_type = resp.headers.get("content-type", "image/jpeg")
-    return Response(
-        content=resp.content,
-        media_type=content_type,
-        headers={"Cache-Control": "public, max-age=300"},
-    )
+    except httpx.HTTPStatusError as exc: raise HTTPException(status_code=502, detail=f"Satellite image HTTP error {exc.response.status_code}") from exc
+    except httpx.RequestError as exc: raise HTTPException(status_code=502, detail=f"Satellite image request error: {exc}") from exc
+    return Response(content=resp.content, media_type=resp.headers.get("content-type","image/jpeg"), headers={"Cache-Control":"public,max-age=300"})
 
 
 @app.get("/api/current")
@@ -676,38 +514,24 @@ async def api_trend(hours: int = 6):
         raise HTTPException(status_code=400, detail="hours must be between 1 and 168")
     with db_conn() as conn:
         rows = conn.execute(
-            """
-            SELECT captured_at, outdoor_temp_f, humidity_pct, pressure_inhg,
-                   wind_mph, rain_rate_inhr, uv_index, comfort_score, soil_moisture_pct
-            FROM weather_snapshots
-            WHERE captured_at >= datetime('now', ?)
-            ORDER BY captured_at ASC
-            """,
+            """SELECT captured_at, outdoor_temp_f, humidity_pct, pressure_inhg,
+                      wind_mph, rain_rate_inhr, uv_index, comfort_score, soil_moisture_pct
+               FROM weather_snapshots WHERE captured_at >= datetime('now', ?) ORDER BY captured_at ASC""",
             (f"-{hours} hours",),
         ).fetchall()
     if len(rows) < 2:
         return {"status": "insufficient_data", "message": "Need at least 2 snapshots"}
-
     first, last = rows[0], rows[-1]
-
     def delta(field):
-        if first[field] is None or last[field] is None:
-            return None
+        if first[field] is None or last[field] is None: return None
         return round(last[field] - first[field], 3)
-
     comfort_delta = delta("comfort_score")
     overall = "steady"
     if comfort_delta is not None:
-        if comfort_delta > 0.5:
-            overall = "better"
-        elif comfort_delta < -0.5:
-            overall = "worse"
-
+        if comfort_delta > 0.5: overall = "better"
+        elif comfort_delta < -0.5: overall = "worse"
     return {
-        "status": "ok",
-        "window_hours": hours,
-        "points": len(rows),
-        "overall": overall,
+        "status": "ok", "window_hours": hours, "points": len(rows), "overall": overall,
         "comparison": {
             "comfort_score": {"delta": comfort_delta, "trend": trend_label(comfort_delta, True)},
             "temperature_f": {"delta": delta("outdoor_temp_f"), "trend": "info"},
@@ -728,14 +552,9 @@ async def api_snapshots(limit: int = 100):
         raise HTTPException(status_code=400, detail="limit must be 1..1000")
     with db_conn() as conn:
         rows = conn.execute(
-            """
-            SELECT id, captured_at, outdoor_temp_f, humidity_pct, pressure_inhg,
-                   wind_mph, rain_rate_inhr, uv_index, comfort_score
-            FROM weather_snapshots
-            ORDER BY captured_at DESC
-            LIMIT ?
-            """,
-            (limit,),
+            """SELECT id, captured_at, outdoor_temp_f, humidity_pct, pressure_inhg,
+                      wind_mph, rain_rate_inhr, uv_index, comfort_score
+               FROM weather_snapshots ORDER BY captured_at DESC LIMIT ?""", (limit,)
         ).fetchall()
     return {"status": "ok", "items": [dict(r) for r in rows]}
 
@@ -746,79 +565,38 @@ async def api_stats(hours: int = 24):
         raise HTTPException(status_code=400, detail="hours must be between 1 and 720")
     with db_conn() as conn:
         agg = conn.execute(
-            """
-            SELECT
-                COUNT(*) AS points,
-                MIN(outdoor_temp_f) AS temp_min_f,
-                MAX(outdoor_temp_f) AS temp_max_f,
-                AVG(outdoor_temp_f) AS temp_avg_f,
-                MIN(humidity_pct) AS humidity_min,
-                MAX(humidity_pct) AS humidity_max,
-                AVG(humidity_pct) AS humidity_avg,
-                AVG(pressure_inhg) AS pressure_avg_inhg,
-                MAX(wind_mph) AS wind_max_mph,
-                AVG(wind_mph) AS wind_avg_mph,
-                SUM(COALESCE(rain_rate_inhr, 0)) AS rain_rate_sum,
-                AVG(comfort_score) AS comfort_avg,
-                MIN(soil_moisture_pct) AS soil_min,
-                MAX(soil_moisture_pct) AS soil_max,
-                AVG(soil_moisture_pct) AS soil_avg
-            FROM weather_snapshots
-            WHERE captured_at >= datetime('now', ?)
-            """,
-            (f"-{hours} hours",),
+            """SELECT COUNT(*) AS points, MIN(outdoor_temp_f) AS temp_min_f, MAX(outdoor_temp_f) AS temp_max_f,
+                      AVG(outdoor_temp_f) AS temp_avg_f, MIN(humidity_pct) AS humidity_min,
+                      MAX(humidity_pct) AS humidity_max, AVG(humidity_pct) AS humidity_avg,
+                      AVG(pressure_inhg) AS pressure_avg_inhg, MAX(wind_mph) AS wind_max_mph,
+                      AVG(wind_mph) AS wind_avg_mph, SUM(COALESCE(rain_rate_inhr,0)) AS rain_rate_sum,
+                      AVG(comfort_score) AS comfort_avg, MIN(soil_moisture_pct) AS soil_min,
+                      MAX(soil_moisture_pct) AS soil_max, AVG(soil_moisture_pct) AS soil_avg
+               FROM weather_snapshots WHERE captured_at >= datetime('now', ?)""", (f"-{hours} hours",)
         ).fetchone()
-
         latest = conn.execute(
-            """
-            SELECT captured_at, outdoor_temp_f, humidity_pct, pressure_inhg,
-                   wind_mph, rain_rate_inhr, uv_index, comfort_score, soil_moisture_pct
-            FROM weather_snapshots
-            ORDER BY captured_at DESC
-            LIMIT 1
-            """
+            """SELECT captured_at, outdoor_temp_f, humidity_pct, pressure_inhg,
+                      wind_mph, rain_rate_inhr, uv_index, comfort_score, soil_moisture_pct
+               FROM weather_snapshots ORDER BY captured_at DESC LIMIT 1"""
         ).fetchone()
-
     if not latest:
         return {"status": "insufficient_data", "message": "No snapshots yet"}
-
     latest_dt = datetime.fromisoformat(latest["captured_at"])
     age_seconds = int((datetime.now(timezone.utc) - latest_dt).total_seconds())
-
-    def round_or_none(value, digits=2):
-        if value is None:
-            return None
+    def ron(value, digits=2):
+        if value is None: return None
         return round(float(value), digits)
-
     return {
-        "status": "ok",
-        "window_hours": hours,
-        "points": int(agg["points"] or 0),
-        "latest": dict(latest),
-        "latest_age_seconds": max(0, age_seconds),
+        "status": "ok", "window_hours": hours, "points": int(agg["points"] or 0),
+        "latest": dict(latest), "latest_age_seconds": max(0, age_seconds),
         "summary": {
-            "temperature_f": {
-                "min": round_or_none(agg["temp_min_f"], 2),
-                "max": round_or_none(agg["temp_max_f"], 2),
-                "avg": round_or_none(agg["temp_avg_f"], 2),
-            },
-            "humidity_pct": {
-                "min": round_or_none(agg["humidity_min"], 1),
-                "max": round_or_none(agg["humidity_max"], 1),
-                "avg": round_or_none(agg["humidity_avg"], 1),
-            },
-            "pressure_inhg": {"avg": round_or_none(agg["pressure_avg_inhg"], 3)},
-            "wind_mph": {
-                "max": round_or_none(agg["wind_max_mph"], 2),
-                "avg": round_or_none(agg["wind_avg_mph"], 2),
-            },
-            "rain_rate_sum_inhr": round_or_none(agg["rain_rate_sum"], 3),
-            "comfort_score_avg": round_or_none(agg["comfort_avg"], 2),
-            "soil_moisture_pct": {
-                "min": round_or_none(agg["soil_min"], 1),
-                "max": round_or_none(agg["soil_max"], 1),
-                "avg": round_or_none(agg["soil_avg"], 1),
-            },
+            "temperature_f": {"min": ron(agg["temp_min_f"],2), "max": ron(agg["temp_max_f"],2), "avg": ron(agg["temp_avg_f"],2)},
+            "humidity_pct": {"min": ron(agg["humidity_min"],1), "max": ron(agg["humidity_max"],1), "avg": ron(agg["humidity_avg"],1)},
+            "pressure_inhg": {"avg": ron(agg["pressure_avg_inhg"],3)},
+            "wind_mph": {"max": ron(agg["wind_max_mph"],2), "avg": ron(agg["wind_avg_mph"],2)},
+            "rain_rate_sum_inhr": ron(agg["rain_rate_sum"],3),
+            "comfort_score_avg": ron(agg["comfort_avg"],2),
+            "soil_moisture_pct": {"min": ron(agg["soil_min"],1), "max": ron(agg["soil_max"],1), "avg": ron(agg["soil_avg"],1)},
         },
     }
 
@@ -827,7 +605,6 @@ async def api_stats(hours: int = 24):
 async def api_ai_forecast():
     global _ai_last_failure_ts
     now = time.time()
-
     if _ai_cache["payload"] and (now - _ai_cache["ts"] < AI_CACHE_TTL_SECONDS):
         cached = deepcopy(_ai_cache["payload"])
         cached["cached"] = True
@@ -840,52 +617,30 @@ async def api_ai_forecast():
 
     with db_conn() as conn:
         points = conn.execute(
-            """
-            SELECT captured_at, outdoor_temp_f, humidity_pct, pressure_inhg,
-                   wind_mph, rain_rate_inhr, uv_index, comfort_score
-            FROM weather_snapshots
-            WHERE captured_at >= datetime('now', '-24 hours')
-            ORDER BY captured_at ASC
-            LIMIT 288
-            """
+            """SELECT captured_at, outdoor_temp_f, humidity_pct, pressure_inhg,
+                      wind_mph, rain_rate_inhr, uv_index, comfort_score, soil_moisture_pct
+               FROM weather_snapshots WHERE captured_at >= datetime('now', '-24 hours')
+               ORDER BY captured_at ASC LIMIT 288"""
         ).fetchall()
 
     compact_points = [{
-        "t": r["captured_at"],
-        "temp_f": r["outdoor_temp_f"],
-        "hum_pct": r["humidity_pct"],
-        "pressure_inhg": r["pressure_inhg"],
-        "wind_mph": r["wind_mph"],
-        "rain_rate_inhr": r["rain_rate_inhr"],
-        "uv": r["uv_index"],
-        "comfort": r["comfort_score"],
+        "t": r["captured_at"], "temp_f": r["outdoor_temp_f"], "hum_pct": r["humidity_pct"],
+        "pressure_inhg": r["pressure_inhg"], "wind_mph": r["wind_mph"],
+        "rain_rate_inhr": r["rain_rate_inhr"], "uv": r["uv_index"],
+        "comfort": r["comfort_score"], "soil_pct": r["soil_moisture_pct"],
     } for r in points]
 
     context_payload = {
-        "current": current.get("data", {}),
-        "stats_24h": stats_24,
-        "trend_24h": trend_24,
-        "samples_24h": compact_points,
-        "timezone_hint": "Europe/London",
+        "current": current.get("data", {}), "stats_24h": stats_24, "trend_24h": trend_24,
+        "samples_24h": compact_points, "timezone_hint": "Europe/London",
     }
 
     in_retry_cooldown = _ai_last_failure_ts > 0 and (now - _ai_last_failure_ts) < AI_RETRY_COOLDOWN_SECONDS
-
     if in_retry_cooldown:
-        payload = {
-            "status": "ok",
-            "model": "local-fallback",
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "ai_forecast": local_fallback_forecast(stats_24, trend_24),
-            "cached": False,
-            "cache_age_seconds": 0,
-            "warning": (
-                f"AI retry cooldown active ({int(AI_RETRY_COOLDOWN_SECONDS - (now - _ai_last_failure_ts))}s remaining) "
-                "after previous Gemini failure."
-            ),
-        }
-        _ai_cache["payload"] = deepcopy(payload)
-        _ai_cache["ts"] = time.time()
+        payload = {"status":"ok","model":"local-fallback","generated_at":datetime.now(timezone.utc).isoformat(),
+                   "ai_forecast":local_fallback_forecast(stats_24,trend_24),"cached":False,"cache_age_seconds":0,
+                   "warning":f"AI retry cooldown active ({int(AI_RETRY_COOLDOWN_SECONDS-(now-_ai_last_failure_ts))}s remaining)."}
+        _ai_cache["payload"] = deepcopy(payload); _ai_cache["ts"] = time.time()
         return payload
 
     satellite_ai_images = []
@@ -893,40 +648,22 @@ async def api_ai_forecast():
         satellite_ai_images = await fetch_satellite_ai_images()
         if satellite_ai_images:
             context_payload["satellite_images"] = [
-                {
-                    "satellite": item["capture"].get("satellite"),
-                    "pass_start": item["capture"].get("pass_start"),
-                    "direction": item["capture"].get("direction"),
-                    "elevation": item["capture"].get("elevation"),
-                    "enhancement": item["image"].get("enhancement"),
-                    "filename": item["image"].get("filename"),
-                    "size_bytes": item["size_bytes"],
-                    "attached_to_gemini": True,
-                }
-                for item in satellite_ai_images
+                {"satellite": i["capture"].get("satellite"), "pass_start": i["capture"].get("pass_start"),
+                 "direction": i["capture"].get("direction"), "elevation": i["capture"].get("elevation"),
+                 "enhancement": i["image"].get("enhancement"), "filename": i["image"].get("filename"),
+                 "size_bytes": i["size_bytes"], "attached_to_gemini": True}
+                for i in satellite_ai_images
             ]
     except Exception as exc:
-        context_payload["satellite_images"] = {
-            "attached_to_gemini": False,
-            "error": str(exc),
-        }
+        context_payload["satellite_images"] = {"attached_to_gemini": False, "error": str(exc)}
 
     try:
         ai = await call_gemini_forecast(context_payload, satellite_ai_images=satellite_ai_images)
         _ai_last_failure_ts = 0.0
-        payload = {
-            "status": "ok",
-            "model": GEMINI_MODEL,
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "ai_forecast": ai,
-            "cached": False,
-            "cache_age_seconds": 0,
-            "satellite_images_used": len(satellite_ai_images),
-        }
-        _ai_cache["payload"] = deepcopy(payload)
-        _ai_cache["ts"] = time.time()
+        payload = {"status":"ok","model":GEMINI_MODEL,"generated_at":datetime.now(timezone.utc).isoformat(),
+                   "ai_forecast":ai,"cached":False,"cache_age_seconds":0,"satellite_images_used":len(satellite_ai_images)}
+        _ai_cache["payload"] = deepcopy(payload); _ai_cache["ts"] = time.time()
         return payload
-
     except HTTPException as exc:
         _ai_last_failure_ts = time.time()
         try:
@@ -934,76 +671,40 @@ async def api_ai_forecast():
                 backup_ai, backup_model = await call_openrouter_chain_forecast(context_payload)
             else:
                 backup_ai, backup_model = await call_backup_llm_forecast(context_payload)
-            payload = {
-                "status": "ok",
-                "model": backup_model,
-                "generated_at": datetime.now(timezone.utc).isoformat(),
-                "ai_forecast": backup_ai,
-                "cached": False,
-                "cache_age_seconds": 0,
-                "warning": f"Primary unavailable: {exc.detail}. Served by backup provider.",
-            }
-            _ai_cache["payload"] = deepcopy(payload)
-            _ai_cache["ts"] = time.time()
+            payload = {"status":"ok","model":backup_model,"generated_at":datetime.now(timezone.utc).isoformat(),
+                       "ai_forecast":backup_ai,"cached":False,"cache_age_seconds":0,
+                       "warning":f"Primary unavailable: {exc.detail}. Served by backup."}
+            _ai_cache["payload"] = deepcopy(payload); _ai_cache["ts"] = time.time()
             return payload
         except HTTPException as backup_exc:
             if _ai_cache["payload"]:
-                stale = deepcopy(_ai_cache["payload"])
-                stale["cached"] = True
-                stale["stale"] = True
-                stale["cache_age_seconds"] = int(now - _ai_cache["ts"])
-                stale["warning"] = f"Primary failed ({exc.detail}); backup failed ({backup_exc.detail})"
+                stale = deepcopy(_ai_cache["payload"]); stale.update({"cached":True,"stale":True,"cache_age_seconds":int(now-_ai_cache["ts"]),"warning":f"Primary ({exc.detail}); backup ({backup_exc.detail}) both failed"})
                 return stale
-
-        payload = {
-            "status": "ok",
-            "model": "local-fallback",
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "ai_forecast": local_fallback_forecast(stats_24, trend_24),
-            "cached": False,
-            "cache_age_seconds": 0,
-            "warning": f"Primary failed ({exc.detail}) and backup failed ({backup_exc.detail}).",
-        }
-        _ai_cache["payload"] = deepcopy(payload)
-        _ai_cache["ts"] = time.time()
+        payload = {"status":"ok","model":"local-fallback","generated_at":datetime.now(timezone.utc).isoformat(),
+                   "ai_forecast":local_fallback_forecast(stats_24,trend_24),"cached":False,"cache_age_seconds":0,
+                   "warning":f"Primary and backup both failed."}
+        _ai_cache["payload"] = deepcopy(payload); _ai_cache["ts"] = time.time()
         return payload
-
     except Exception as exc:
         _ai_last_failure_ts = time.time()
         if _ai_cache["payload"]:
-            stale = deepcopy(_ai_cache["payload"])
-            stale["cached"] = True
-            stale["stale"] = True
-            stale["cache_age_seconds"] = int(now - _ai_cache["ts"])
-            stale["warning"] = f"Unexpected AI error: {exc}"
+            stale = deepcopy(_ai_cache["payload"]); stale.update({"cached":True,"stale":True,"cache_age_seconds":int(now-_ai_cache["ts"]),"warning":f"Unexpected AI error: {exc}"})
             return stale
-
-        payload = {
-            "status": "ok",
-            "model": "local-fallback",
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "ai_forecast": local_fallback_forecast(stats_24, trend_24),
-            "cached": False,
-            "cache_age_seconds": 0,
-            "warning": f"Unexpected AI error: {exc}",
-        }
-        _ai_cache["payload"] = deepcopy(payload)
-        _ai_cache["ts"] = time.time()
+        payload = {"status":"ok","model":"local-fallback","generated_at":datetime.now(timezone.utc).isoformat(),
+                   "ai_forecast":local_fallback_forecast(stats_24,trend_24),"cached":False,"cache_age_seconds":0,"warning":f"Unexpected AI error: {exc}"}
+        _ai_cache["payload"] = deepcopy(payload); _ai_cache["ts"] = time.time()
         return payload
 
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-
 @app.get("/")
 async def root():
     return FileResponse(os.path.join(STATIC_DIR, "weather.html"))
 
-
 @app.get("/weather-dashboard")
 async def dashboard_alias():
     return FileResponse(os.path.join(STATIC_DIR, "weather.html"))
-
 
 if __name__ == "__main__":
     import uvicorn
