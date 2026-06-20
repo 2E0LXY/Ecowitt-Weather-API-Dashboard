@@ -206,6 +206,37 @@
                 grid-template-columns: repeat(4, minmax(0, 1fr));
             }
         }
+
+        .wu-station-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 10px;
+        }
+
+        @media (min-width: 640px) {
+            .wu-station-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+
+        @media (min-width: 1024px) and (max-width: 1280px) {
+            .wu-station-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (min-width: 1281px) {
+            .wu-station-grid {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+            }
+        }
+
+        .wu-station-card {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 0.9rem;
+            padding: 12px 14px;
+        }
     </style>
 </head>
 <body class="p-4 md:p-8 antialiased">
@@ -433,6 +464,42 @@
                                 </a>
                                 <div id="satellite-caption-secondary" class="satellite-caption">--</div>
                             </div>
+                        </div>
+                    </section>
+
+                    <section class="glass-card p-5">
+                        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+                            <div>
+                                <h2 class="text-lg font-semibold text-blue-200 flex items-center gap-2">
+                                    <i class="ph ph-broadcast"></i> Nearby Weather Stations
+                                </h2>
+                                <p id="wu-status" class="text-sm text-blue-200 mt-1">Loading nearby PWS network data...</p>
+                            </div>
+                            <button id="wu-refresh-btn" class="self-start md:self-auto flex items-center gap-2 bg-sky-600 hover:bg-sky-500 text-white px-3 py-2 rounded-full text-sm font-semibold transition-colors">
+                                <i class="ph-bold ph-arrows-clockwise"></i>
+                                Refresh
+                            </button>
+                        </div>
+                        <div class="satellite-meta mb-4 text-sm">
+                            <div class="rounded-lg bg-white/5 border border-white/10 p-3">
+                                <p class="text-blue-200 text-xs">Avg Temp</p>
+                                <p id="wu-summary-temp" class="font-semibold">--</p>
+                            </div>
+                            <div class="rounded-lg bg-white/5 border border-white/10 p-3">
+                                <p class="text-blue-200 text-xs">Avg Wind</p>
+                                <p id="wu-summary-wind" class="font-semibold">--</p>
+                            </div>
+                            <div class="rounded-lg bg-white/5 border border-white/10 p-3">
+                                <p class="text-blue-200 text-xs">Max Gust</p>
+                                <p id="wu-summary-gust" class="font-semibold">--</p>
+                            </div>
+                            <div class="rounded-lg bg-white/5 border border-white/10 p-3">
+                                <p class="text-blue-200 text-xs">Stations Reporting Rain</p>
+                                <p id="wu-summary-rain" class="font-semibold">--</p>
+                            </div>
+                        </div>
+                        <div id="wu-station-grid" class="wu-station-grid">
+                            <div class="wu-station-card text-sm text-blue-200">Loading stations...</div>
                         </div>
                     </section>
                 </div>
@@ -739,6 +806,13 @@
         const satelliteCaptionPrimaryEl = document.getElementById('satellite-caption-primary');
         const satelliteCaptionSecondaryEl = document.getElementById('satellite-caption-secondary');
         const satelliteRefreshBtn = document.getElementById('satellite-refresh-btn');
+        const wuStatusEl = document.getElementById('wu-status');
+        const wuRefreshBtn = document.getElementById('wu-refresh-btn');
+        const wuSummaryTempEl = document.getElementById('wu-summary-temp');
+        const wuSummaryWindEl = document.getElementById('wu-summary-wind');
+        const wuSummaryGustEl = document.getElementById('wu-summary-gust');
+        const wuSummaryRainEl = document.getElementById('wu-summary-rain');
+        const wuStationGridEl = document.getElementById('wu-station-grid');
         const liveOnlySections = document.querySelectorAll('.live-only');
         
         // Loader elements
@@ -1419,6 +1493,85 @@
             }
         }
 
+        function wuTrendIcon(dir) {
+            if (dir === null || dir === undefined || isNaN(dir)) return '';
+            const arr = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
+            return arr[Math.floor((dir / 22.5) + 0.5) % 16];
+        }
+
+        async function updateWuStations(force = false) {
+            if (!CONFIG.USE_BACKEND_PROXY || window.location.protocol === 'file:') {
+                if (wuStatusEl) wuStatusEl.textContent = 'Regional stations unavailable in file mode.';
+                return;
+            }
+            try {
+                if (wuStatusEl) wuStatusEl.textContent = 'Loading nearby PWS network data...';
+                const res = await fetchBackendJson(`/api/wu/nearby${force ? '?force=1' : ''}`);
+                if (res.status !== 'ok') throw new Error('Invalid WU response');
+                const summary = res.regional_summary || {};
+                const stations = Array.isArray(res.stations) ? res.stations : [];
+
+                if (wuSummaryTempEl) {
+                    wuSummaryTempEl.textContent = Number.isFinite(summary.temp_c_avg) ? `${summary.temp_c_avg.toFixed(1)}°C (${cToF(summary.temp_c_avg).toFixed(1)}°F)` : '--';
+                }
+                if (wuSummaryWindEl) {
+                    wuSummaryWindEl.textContent = Number.isFinite(summary.wind_speed_kmh_avg) ? `${summary.wind_speed_kmh_avg.toFixed(1)} km/h (${(summary.wind_speed_kmh_avg/1.60934).toFixed(1)} mph)` : '--';
+                }
+                if (wuSummaryGustEl) {
+                    wuSummaryGustEl.textContent = Number.isFinite(summary.wind_gust_kmh_max) ? `${summary.wind_gust_kmh_max.toFixed(1)} km/h (${(summary.wind_gust_kmh_max/1.60934).toFixed(1)} mph)` : '--';
+                }
+                if (wuSummaryRainEl) {
+                    const n = summary.stations_reporting_rain;
+                    wuSummaryRainEl.textContent = Number.isFinite(n) ? `${n} of ${res.station_count || stations.length}` : '--';
+                }
+
+                if (wuStationGridEl) {
+                    if (!stations.length) {
+                        wuStationGridEl.innerHTML = '<div class="wu-station-card text-sm text-blue-200">No nearby stations reporting.</div>';
+                    } else {
+                        wuStationGridEl.innerHTML = stations.map((s) => {
+                            const tempC = Number.isFinite(s.temp_c) ? s.temp_c : null;
+                            const tempDisplay = tempC !== null ? `${tempC.toFixed(1)}°C (${cToF(tempC).toFixed(1)}°F)` : '--';
+                            const windKmh = Number.isFinite(s.wind_speed_kmh) ? s.wind_speed_kmh : null;
+                            const windDisplay = windKmh !== null ? `${windKmh.toFixed(1)} km/h` : '--';
+                            const gustKmh = Number.isFinite(s.wind_gust_kmh) ? s.wind_gust_kmh : null;
+                            const rainRate = Number.isFinite(s.precip_rate_mmhr) ? s.precip_rate_mmhr : 0;
+                            const isRaining = rainRate > 0;
+                            const dirText = wuTrendIcon(s.wind_dir_deg);
+                            return `
+                                <div class="wu-station-card">
+                                    <div class="flex justify-between items-start mb-2">
+                                        <div>
+                                            <p class="font-semibold text-sm">${s.name || s.station_id}</p>
+                                            <p class="text-xs text-blue-300">${Number.isFinite(s.distance_km) ? s.distance_km.toFixed(1) + ' km' : ''}${Number.isFinite(s.distance_mi) ? ' (' + s.distance_mi.toFixed(1) + ' mi)' : ''}</p>
+                                        </div>
+                                        ${isRaining ? '<span class="text-blue-300"><i class="ph-fill ph-cloud-rain"></i></span>' : ''}
+                                    </div>
+                                    <div class="grid grid-cols-2 gap-x-2 gap-y-1 text-xs text-blue-200">
+                                        <span>Temp</span><span class="text-right text-white font-medium">${tempDisplay}</span>
+                                        <span>Humidity</span><span class="text-right text-white font-medium">${Number.isFinite(s.humidity_pct) ? s.humidity_pct + '%' : '--'}</span>
+                                        <span>Wind</span><span class="text-right text-white font-medium">${windDisplay}${dirText ? ' ' + dirText : ''}</span>
+                                        <span>Gust</span><span class="text-right text-white font-medium">${gustKmh !== null ? gustKmh.toFixed(1) + ' km/h' : '--'}</span>
+                                        <span>Pressure</span><span class="text-right text-white font-medium">${Number.isFinite(s.pressure_hpa) ? s.pressure_hpa.toFixed(1) + ' hPa' : '--'}</span>
+                                        <span>Rain today</span><span class="text-right text-white font-medium">${Number.isFinite(s.precip_total_mm) ? s.precip_total_mm.toFixed(1) + ' mm' : '--'}</span>
+                                    </div>
+                                </div>`;
+                        }).join('');
+                    }
+                }
+
+                if (wuStatusEl) {
+                    wuStatusEl.textContent = res.cached
+                        ? `${res.station_count || stations.length} nearby stations loaded (cached).`
+                        : `${res.station_count || stations.length} nearby stations loaded.`;
+                }
+            } catch (err) {
+                if (wuStatusEl) wuStatusEl.textContent = 'Regional station data unavailable.';
+                if (wuStationGridEl) wuStationGridEl.innerHTML = '<div class="wu-station-card text-sm text-red-300">Failed to load nearby stations.</div>';
+                console.error('WU nearby stations fetch error:', err);
+            }
+        }
+
         // --- Historic Data Logic ---
         async function fetchHistoricData() {
             resetLoader();
@@ -1607,6 +1760,8 @@
             refreshTimer = setInterval(() => fetchWeatherData(true), CONFIG.REFRESH_INTERVAL_MS);
         }
 
+        if (wuRefreshBtn) wuRefreshBtn.addEventListener('click', () => updateWuStations(true));
+
         (async () => {
             await fastPrefillFromDatabase();
             fetchWeatherData(false);
@@ -1615,6 +1770,8 @@
             setInterval(updateAiForecast, 30 * 60 * 1000);
             updateSatelliteImage();
             setInterval(updateSatelliteImage, 5 * 60 * 1000);
+            updateWuStations();
+            setInterval(updateWuStations, 10 * 60 * 1000);
         })();
 
     </script>

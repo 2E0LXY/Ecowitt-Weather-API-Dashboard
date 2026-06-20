@@ -44,6 +44,13 @@ SATELLITE_AI_IMAGE_ENHANCEMENT = os.getenv("SATELLITE_AI_IMAGE_ENHANCEMENT", "eq
 SATELLITE_AI_IMAGE_COUNT = max(0, min(4, int(os.getenv("SATELLITE_AI_IMAGE_COUNT", "2"))))
 SATELLITE_AI_MAX_IMAGE_BYTES = int(os.getenv("SATELLITE_AI_MAX_IMAGE_BYTES", str(8 * 1024 * 1024)))
 
+WU_API_KEY = os.getenv("WU_API_KEY", "")
+WU_API_BASE = "https://api.weather.com"
+WU_CENTER_LAT = float(os.getenv("WU_CENTER_LAT", "53.75"))
+WU_CENTER_LON = float(os.getenv("WU_CENTER_LON", "-1.52"))
+WU_STATION_LIMIT = max(1, min(10, int(os.getenv("WU_STATION_LIMIT", "6"))))
+WU_CACHE_TTL_SECONDS = int(os.getenv("WU_CACHE_TTL_SECONDS", "600"))
+
 STATIC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "static"))
 
 AI_CACHE_TTL_SECONDS = 900
@@ -52,6 +59,7 @@ AI_RETRY_COOLDOWN_SECONDS = 600
 _ai_last_failure_ts = 0.0
 SATELLITE_CACHE_TTL_SECONDS = 300
 _satellite_cache = {"ts": 0.0, "payload": None}
+_wu_cache = {"ts": 0.0, "payload": None}
 
 
 def db_conn():
@@ -113,6 +121,108 @@ def weather_comfort_score(temp_f, humidity, wind_mph, rain_rate_inhr, uv_index):
     uv_penalty = 0.0 if uv_index is None else max(0.0, uv_index - 3.0) * 2.0
     score = 100.0 - (temp_penalty + humidity_penalty + wind_penalty + rain_penalty + uv_penalty)
     return round(max(0.0, min(100.0, score)), 2)
+
+
+async def fetch_wu_nearby_stations(force=False):
+    """Fetch nearby Weather Underground PWS stations + current conditions."""
+    now = time.time()
+    if not force and _wu_cache["payload"] and (now - _wu_cache["ts"] < WU_CACHE_TTL_SECONDS):
+        cached = deepcopy(_wu_cache["payload"])
+        cached["cached"] = True
+        cached["cache_age_seconds"] = int(now - _wu_cache["ts"])
+        return cached
+
+    if not WU_API_KEY:
+        raise HTTPException(status_code=500, detail="Missing WU_API_KEY")
+
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        near_resp = await client.get(
+            f"{WU_API_BASE}/v3/location/near",
+            params={
+                "geocode": f"{WU_CENTER_LAT},{WU_CENTER_LON}",
+                "product": "pws",
+                "format": "json",
+                "apiKey": WU_API_KEY,
+            },
+        )
+        near_resp.raise_for_status()
+        near_data = near_resp.json()
+        loc = near_data.get("location", {})
+        station_ids = loc.get("stationId", [])
+        station_names = loc.get("stationName", [])
+        distances_km = loc.get("distanceKm", [])
+        distances_mi = loc.get("distanceMi", [])
+
+        candidates = list(zip(station_ids, station_names, distances_km, distances_mi))
+        candidates = candidates[:WU_STATION_LIMIT]
+
+        stations = []
+        for sid, name, dist_km, dist_mi in candidates:
+            try:
+                obs_resp = await client.get(
+                    f"{WU_API_BASE}/v2/pws/observations/current",
+                    params={"stationId": sid, "format": "json", "units": "m", "apiKey": WU_API_KEY},
+                )
+                if obs_resp.status_code != 200:
+                    continue
+                obs_data = obs_resp.json()
+                observations = obs_data.get("observations", [])
+                if not observations:
+                    continue
+                obs = observations[0]
+                metric = obs.get("metric", {})
+                stations.append({
+                    "station_id": sid,
+                    "name": name,
+                    "distance_km": round(dist_km, 2),
+                    "distance_mi": round(dist_mi, 2),
+                    "lat": obs.get("lat"),
+                    "lon": obs.get("lon"),
+                    "obs_time_local": obs.get("obsTimeLocal"),
+                    "neighborhood": obs.get("neighborhood"),
+                    "temp_c": metric.get("temp"),
+                    "heat_index_c": metric.get("heatIndex"),
+                    "dewpt_c": metric.get("dewpt"),
+                    "wind_chill_c": metric.get("windChill"),
+                    "humidity_pct": obs.get("humidity"),
+                    "wind_dir_deg": obs.get("winddir"),
+                    "wind_speed_kmh": metric.get("windSpeed"),
+                    "wind_gust_kmh": metric.get("windGust"),
+                    "pressure_hpa": metric.get("pressure"),
+                    "precip_rate_mmhr": metric.get("precipRate"),
+                    "precip_total_mm": metric.get("precipTotal"),
+                    "uv": obs.get("uv"),
+                    "solar_radiation": obs.get("solarRadiation"),
+                })
+            except (httpx.HTTPStatusError, httpx.RequestError, ValueError, KeyError):
+                continue
+
+    def avg(field):
+        vals = [s[field] for s in stations if isinstance(s.get(field), (int, float))]
+        return round(sum(vals) / len(vals), 2) if vals else None
+
+    payload = {
+        "status": "ok",
+        "source": "Weather Underground PWS Network",
+        "center": {"lat": WU_CENTER_LAT, "lon": WU_CENTER_LON},
+        "cached": False,
+        "cache_age_seconds": 0,
+        "station_count": len(stations),
+        "stations": stations,
+        "regional_summary": {
+            "temp_c_avg": avg("temp_c"),
+            "humidity_pct_avg": avg("humidity_pct"),
+            "wind_speed_kmh_avg": avg("wind_speed_kmh"),
+            "wind_gust_kmh_max": max([s["wind_gust_kmh"] for s in stations if isinstance(s.get("wind_gust_kmh"), (int, float))], default=None),
+            "pressure_hpa_avg": avg("pressure_hpa"),
+            "precip_total_mm_max": max([s["precip_total_mm"] for s in stations if isinstance(s.get("precip_total_mm"), (int, float))], default=None),
+            "stations_reporting_rain": sum(1 for s in stations if isinstance(s.get("precip_rate_mmhr"), (int, float)) and s["precip_rate_mmhr"] > 0),
+        },
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    _wu_cache["payload"] = deepcopy(payload)
+    _wu_cache["ts"] = time.time()
+    return payload
 
 
 def init_db():
@@ -490,6 +600,11 @@ async def api_satellite_image(url: str = Query(...)):
     return Response(content=resp.content, media_type=resp.headers.get("content-type","image/jpeg"), headers={"Cache-Control":"public,max-age=300"})
 
 
+@app.get("/api/wu/nearby")
+async def api_wu_nearby(force: bool = False):
+    return await fetch_wu_nearby_stations(force=force)
+
+
 @app.get("/api/current")
 async def api_current(save: bool = False):
     payload = await fetch_current_from_ecowitt()
@@ -634,6 +749,30 @@ async def api_ai_forecast():
         "current": current.get("data", {}), "stats_24h": stats_24, "trend_24h": trend_24,
         "samples_24h": compact_points, "timezone_hint": "Europe/London",
     }
+
+    try:
+        wu_data = await fetch_wu_nearby_stations()
+        context_payload["regional_stations"] = {
+            "source": wu_data.get("source"),
+            "station_count": wu_data.get("station_count"),
+            "regional_summary": wu_data.get("regional_summary"),
+            "stations": [
+                {
+                    "name": s.get("name"),
+                    "distance_km": s.get("distance_km"),
+                    "temp_c": s.get("temp_c"),
+                    "humidity_pct": s.get("humidity_pct"),
+                    "wind_speed_kmh": s.get("wind_speed_kmh"),
+                    "wind_gust_kmh": s.get("wind_gust_kmh"),
+                    "precip_rate_mmhr": s.get("precip_rate_mmhr"),
+                    "precip_total_mm": s.get("precip_total_mm"),
+                    "pressure_hpa": s.get("pressure_hpa"),
+                }
+                for s in wu_data.get("stations", [])
+            ],
+        }
+    except Exception as exc:
+        context_payload["regional_stations"] = {"error": str(exc)}
 
     in_retry_cooldown = _ai_last_failure_ts > 0 and (now - _ai_last_failure_ts) < AI_RETRY_COOLDOWN_SECONDS
     if in_retry_cooldown:
