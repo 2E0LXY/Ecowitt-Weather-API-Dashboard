@@ -1,0 +1,28 @@
+2e0lxy.uk, www.2e0lxy.uk {
+    header / {
+        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com https://unpkg.com; img-src 'self' data: https:; connect-src 'self' https://api.ecowitt.net https://api1.ecowitt.net https://api2.ecowitt.net https://api3.ecowitt.net https://api4.ecowitt.net https://cdnapi.ecowitt.net;"
+    }
+
+    route {
+        # Existing Ecowitt passthrough route
+        @wx path /api/wx/*
+        handle @wx {
+            uri strip_prefix /api/wx
+            reverse_proxy https://api.ecowitt.net {
+                header_up Host api.ecowitt.net
+                header_up User-Agent "Mozilla/5.0"
+            }
+        }
+
+        # Local FastAPI backend routes
+        @weather_api path /api/current /api/current* /api/snapshot /api/snapshot* /api/snapshots /api/snapshots* /api/trend /api/trend* /api/stats /api/stats* /api/ai-forecast /api/ai-forecast* /api/satellite/* /weather-dashboard/api/satellite/* /api/wu/* /api/wu/* /weather-dashboard/api/wu/*
+        handle @weather_api {
+            uri strip_prefix /weather-dashboard
+            reverse_proxy 127.0.0.1:8000
+        }
+
+        # Serve existing website + weather-dashboard folder from disk
+        root * /var/www
+        file_server
+    }
+}

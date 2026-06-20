@@ -471,7 +471,7 @@
                         <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
                             <div>
                                 <h2 class="text-lg font-semibold text-blue-200 flex items-center gap-2">
-                                    <i class="ph ph-broadcast"></i> Nearby Weather Stations
+                                    <i class="ph ph-broadcast"></i> Nearby Weather Stations <span class="text-sm font-normal text-blue-300">(10mi radius)</span>
                                 </h2>
                                 <p id="wu-status" class="text-sm text-blue-200 mt-1">Loading nearby PWS network data...</p>
                             </div>
@@ -1561,9 +1561,17 @@
                 }
 
                 if (wuStatusEl) {
-                    wuStatusEl.textContent = res.cached
-                        ? `${res.station_count || stations.length} nearby stations loaded (cached).`
-                        : `${res.station_count || stations.length} nearby stations loaded.`;
+                    const count = res.station_count || stations.length;
+                    const totalInRadius = Number.isFinite(res.stations_in_radius) ? res.stations_in_radius : count;
+                    const radius = Number.isFinite(res.radius_miles) ? res.radius_miles : 10;
+                    const cachedTxt = res.cached ? ' (cached)' : '';
+                    const rainCount = summary.stations_reporting_rain || 0;
+                    const countTxt = totalInRadius > count ? `Showing ${count} closest of ${totalInRadius}` : `${count}`;
+                    let msg = `${countTxt} stations within ${radius}mi loaded${cachedTxt}.`;
+                    if (rainCount > 0) {
+                        msg += ` ⚠ Rain detected at ${rainCount} nearby station${rainCount === 1 ? '' : 's'} — may be approaching.`;
+                    }
+                    wuStatusEl.textContent = msg;
                 }
             } catch (err) {
                 if (wuStatusEl) wuStatusEl.textContent = 'Regional station data unavailable.';

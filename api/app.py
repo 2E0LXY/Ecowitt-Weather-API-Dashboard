@@ -1,5 +1,7 @@
+import asyncio
 import base64
 import json
+import math
 import os
 import re
 import sqlite3
@@ -48,8 +50,9 @@ WU_API_KEY = os.getenv("WU_API_KEY", "")
 WU_API_BASE = "https://api.weather.com"
 WU_CENTER_LAT = float(os.getenv("WU_CENTER_LAT", "53.75"))
 WU_CENTER_LON = float(os.getenv("WU_CENTER_LON", "-1.52"))
-WU_STATION_LIMIT = max(1, min(10, int(os.getenv("WU_STATION_LIMIT", "6"))))
-WU_CACHE_TTL_SECONDS = int(os.getenv("WU_CACHE_TTL_SECONDS", "600"))
+WU_RADIUS_MILES = float(os.getenv("WU_RADIUS_MILES", "10"))
+WU_STATION_LIMIT = max(1, min(30, int(os.getenv("WU_STATION_LIMIT", "20"))))
+WU_CACHE_TTL_SECONDS = int(os.getenv("WU_CACHE_TTL_SECONDS", "1800"))
 
 STATIC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "static"))
 
@@ -123,8 +126,56 @@ def weather_comfort_score(temp_f, humidity, wind_mph, rain_rate_inhr, uv_index):
     return round(max(0.0, min(100.0, score)), 2)
 
 
+def _haversine_km(lat1, lon1, lat2, lon2):
+    R = 6371.0
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+    return R * (2 * math.atan2(math.sqrt(a), math.sqrt(1 - a)))
+
+
+def _destination_point(lat, lon, bearing_deg, distance_km):
+    R = 6371.0
+    phi1 = math.radians(lat)
+    lam1 = math.radians(lon)
+    theta = math.radians(bearing_deg)
+    delta = distance_km / R
+    phi2 = math.asin(math.sin(phi1) * math.cos(delta) + math.cos(phi1) * math.sin(delta) * math.cos(theta))
+    lam2 = lam1 + math.atan2(
+        math.sin(theta) * math.sin(delta) * math.cos(phi1),
+        math.cos(delta) - math.sin(phi1) * math.sin(phi2),
+    )
+    return math.degrees(phi2), math.degrees(lam2)
+
+
+async def _wu_near_search(client, lat, lon):
+    """Single nearest-10 lookup; returns [(stationId, name, lat, lon), ...]."""
+    try:
+        resp = await client.get(
+            f"{WU_API_BASE}/v3/location/near",
+            params={"geocode": f"{lat},{lon}", "product": "pws", "format": "json", "apiKey": WU_API_KEY},
+        )
+        resp.raise_for_status()
+        loc = resp.json().get("location", {})
+        ids = loc.get("stationId", [])
+        names = loc.get("stationName", [])
+        lats = loc.get("latitude", [])
+        lons = loc.get("longitude", [])
+        return list(zip(ids, names, lats, lons))
+    except (httpx.HTTPStatusError, httpx.RequestError, ValueError):
+        return []
+
+
 async def fetch_wu_nearby_stations(force=False):
-    """Fetch nearby Weather Underground PWS stations + current conditions."""
+    """Fetch PWS stations within WU_RADIUS_MILES of the configured centre point.
+
+    The WU v3/location/near API hard-caps each lookup at the 10 nearest stations
+    to the queried geocode, so to cover a wider radius we issue several lookups
+    from points arranged in a ring around the centre, merge + dedupe the results,
+    then keep only stations whose true (haversine) distance from the centre is
+    within the configured radius.
+    """
     now = time.time()
     if not force and _wu_cache["payload"] and (now - _wu_cache["ts"] < WU_CACHE_TTL_SECONDS):
         cached = deepcopy(_wu_cache["payload"])
@@ -135,67 +186,82 @@ async def fetch_wu_nearby_stations(force=False):
     if not WU_API_KEY:
         raise HTTPException(status_code=500, detail="Missing WU_API_KEY")
 
+    radius_km = WU_RADIUS_MILES * 1.60934
+    probe_radius_km = radius_km * 0.8
+    bearings = [0, 45, 90, 135, 180, 225, 270, 315]
+    probe_points = [(WU_CENTER_LAT, WU_CENTER_LON)] + [
+        _destination_point(WU_CENTER_LAT, WU_CENTER_LON, b, probe_radius_km) for b in bearings
+    ]
+
     async with httpx.AsyncClient(timeout=20.0) as client:
-        near_resp = await client.get(
-            f"{WU_API_BASE}/v3/location/near",
-            params={
-                "geocode": f"{WU_CENTER_LAT},{WU_CENTER_LON}",
-                "product": "pws",
-                "format": "json",
-                "apiKey": WU_API_KEY,
-            },
+        probe_results = await asyncio.gather(
+            *[_wu_near_search(client, plat, plon) for plat, plon in probe_points]
         )
-        near_resp.raise_for_status()
-        near_data = near_resp.json()
-        loc = near_data.get("location", {})
-        station_ids = loc.get("stationId", [])
-        station_names = loc.get("stationName", [])
-        distances_km = loc.get("distanceKm", [])
-        distances_mi = loc.get("distanceMi", [])
 
-        candidates = list(zip(station_ids, station_names, distances_km, distances_mi))
-        candidates = candidates[:WU_STATION_LIMIT]
+        candidates = {}
+        for result in probe_results:
+            for sid, name, slat, slon in result:
+                if sid not in candidates:
+                    candidates[sid] = {"station_id": sid, "name": name, "lat": slat, "lon": slon}
 
-        stations = []
-        for sid, name, dist_km, dist_mi in candidates:
+        scored = []
+        for sid, info in candidates.items():
             try:
-                obs_resp = await client.get(
-                    f"{WU_API_BASE}/v2/pws/observations/current",
-                    params={"stationId": sid, "format": "json", "units": "m", "apiKey": WU_API_KEY},
-                )
-                if obs_resp.status_code != 200:
-                    continue
-                obs_data = obs_resp.json()
-                observations = obs_data.get("observations", [])
-                if not observations:
-                    continue
-                obs = observations[0]
-                metric = obs.get("metric", {})
-                stations.append({
-                    "station_id": sid,
-                    "name": name,
-                    "distance_km": round(dist_km, 2),
-                    "distance_mi": round(dist_mi, 2),
-                    "lat": obs.get("lat"),
-                    "lon": obs.get("lon"),
-                    "obs_time_local": obs.get("obsTimeLocal"),
-                    "neighborhood": obs.get("neighborhood"),
-                    "temp_c": metric.get("temp"),
-                    "heat_index_c": metric.get("heatIndex"),
-                    "dewpt_c": metric.get("dewpt"),
-                    "wind_chill_c": metric.get("windChill"),
-                    "humidity_pct": obs.get("humidity"),
-                    "wind_dir_deg": obs.get("winddir"),
-                    "wind_speed_kmh": metric.get("windSpeed"),
-                    "wind_gust_kmh": metric.get("windGust"),
-                    "pressure_hpa": metric.get("pressure"),
-                    "precip_rate_mmhr": metric.get("precipRate"),
-                    "precip_total_mm": metric.get("precipTotal"),
-                    "uv": obs.get("uv"),
-                    "solar_radiation": obs.get("solarRadiation"),
-                })
-            except (httpx.HTTPStatusError, httpx.RequestError, ValueError, KeyError):
+                dist_km = _haversine_km(WU_CENTER_LAT, WU_CENTER_LON, float(info["lat"]), float(info["lon"]))
+            except (TypeError, ValueError):
                 continue
+            if dist_km <= radius_km:
+                scored.append((dist_km, info))
+        scored.sort(key=lambda x: x[0])
+        stations_in_radius = len(scored)
+        scored = scored[:WU_STATION_LIMIT]
+
+        sem = asyncio.Semaphore(5)
+
+        async def fetch_obs(dist_km, info):
+            sid = info["station_id"]
+            async with sem:
+                try:
+                    obs_resp = await client.get(
+                        f"{WU_API_BASE}/v2/pws/observations/current",
+                        params={"stationId": sid, "format": "json", "units": "m", "apiKey": WU_API_KEY},
+                    )
+                    if obs_resp.status_code != 200:
+                        return None
+                    observations = obs_resp.json().get("observations", [])
+                    if not observations:
+                        return None
+                    obs = observations[0]
+                    metric = obs.get("metric", {})
+                    return {
+                        "station_id": sid,
+                        "name": info["name"],
+                        "distance_km": round(dist_km, 2),
+                        "distance_mi": round(dist_km / 1.60934, 2),
+                        "lat": obs.get("lat", info["lat"]),
+                        "lon": obs.get("lon", info["lon"]),
+                        "obs_time_local": obs.get("obsTimeLocal"),
+                        "neighborhood": obs.get("neighborhood"),
+                        "temp_c": metric.get("temp"),
+                        "heat_index_c": metric.get("heatIndex"),
+                        "dewpt_c": metric.get("dewpt"),
+                        "wind_chill_c": metric.get("windChill"),
+                        "humidity_pct": obs.get("humidity"),
+                        "wind_dir_deg": obs.get("winddir"),
+                        "wind_speed_kmh": metric.get("windSpeed"),
+                        "wind_gust_kmh": metric.get("windGust"),
+                        "pressure_hpa": metric.get("pressure"),
+                        "precip_rate_mmhr": metric.get("precipRate"),
+                        "precip_total_mm": metric.get("precipTotal"),
+                        "uv": obs.get("uv"),
+                        "solar_radiation": obs.get("solarRadiation"),
+                    }
+                except (httpx.HTTPStatusError, httpx.RequestError, ValueError, KeyError):
+                    return None
+
+        station_results = await asyncio.gather(*[fetch_obs(d, info) for d, info in scored])
+        stations = [s for s in station_results if s]
+        stations.sort(key=lambda s: s["distance_km"])
 
     def avg(field):
         vals = [s[field] for s in stations if isinstance(s.get(field), (int, float))]
@@ -205,8 +271,11 @@ async def fetch_wu_nearby_stations(force=False):
         "status": "ok",
         "source": "Weather Underground PWS Network",
         "center": {"lat": WU_CENTER_LAT, "lon": WU_CENTER_LON},
+        "radius_miles": WU_RADIUS_MILES,
         "cached": False,
         "cache_age_seconds": 0,
+        "candidates_found": len(candidates),
+        "stations_in_radius": stations_in_radius,
         "station_count": len(stations),
         "stations": stations,
         "regional_summary": {
