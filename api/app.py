@@ -338,6 +338,10 @@ async def call_gemini_forecast(context_payload, satellite_ai_images=None):
         "5) Use metric-first units with imperial in brackets.\n"
         "If satellite images are attached, compare them chronologically. Use visible cloud cover, clearing, frontal bands, "
         "and cloud movement to improve the forecast description, but do not invent precise model data.\n"
+        "If regional_stations data is present, cross-reference it with the satellite imagery: use nearby station "
+        "temperature, humidity, wind, pressure and rain readings to corroborate or refine what the satellite shows "
+        "(e.g. confirm actual rainfall under cloud cover, detect wind shifts ahead of a front, or pressure drops "
+        "indicating an approaching system). Mention notable regional variation if relevant.\n"
         "Keep text concise and plain English for a dashboard.\n\n"
         f"DATA:\n{json.dumps(context_payload, ensure_ascii=True)}"
     )
