@@ -343,6 +343,37 @@
             </div>
         </section>
 
+        <section class="glass-card p-5 mb-6 live-only">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
+                <div>
+                    <h2 class="text-lg font-semibold text-blue-200 flex items-center gap-2">
+                        <i class="ph-fill ph-radar"></i> Local Nowcast <span class="text-sm font-normal text-blue-300">&mdash; next 1&ndash;3 hours</span>
+                    </h2>
+                    <p class="text-xs text-blue-300 mt-0.5">Self-computed from our own pressure trend + upwind regional stations &mdash; no external forecast service</p>
+                </div>
+                <span id="nowcast-risk-badge" class="self-start md:self-auto px-3 py-1.5 text-sm font-semibold rounded-full bg-gray-500/20 text-gray-300 border border-gray-500/30">Loading...</span>
+            </div>
+            <p id="nowcast-message" class="text-sm text-blue-100 mb-4">Computing nowcast...</p>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div class="rounded-lg bg-white/5 border border-white/10 p-3">
+                    <p class="text-blue-200 text-xs">Pressure (3h)</p>
+                    <p id="nowcast-pressure-trend" class="font-semibold">--</p>
+                </div>
+                <div class="rounded-lg bg-white/5 border border-white/10 p-3">
+                    <p class="text-blue-200 text-xs">Upwind Sector</p>
+                    <p id="nowcast-upwind-sector" class="font-semibold">--</p>
+                </div>
+                <div class="rounded-lg bg-white/5 border border-white/10 p-3">
+                    <p class="text-blue-200 text-xs">Nearest Upwind Rain</p>
+                    <p id="nowcast-upwind-rain" class="font-semibold">--</p>
+                </div>
+                <div class="rounded-lg bg-white/5 border border-white/10 p-3">
+                    <p class="text-blue-200 text-xs">Estimated Arrival</p>
+                    <p id="nowcast-eta" class="font-semibold">--</p>
+                </div>
+            </div>
+        </section>
+
         <div id="view-live">
             <main class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
                 
@@ -638,7 +669,7 @@
                     </button>
                 </div>
 
-                <h3 class="text-sm font-semibold text-blue-200 uppercase tracking-wider mb-3">Regional Averages</h3>
+                <h3 class="text-sm font-semibold text-blue-200 uppercase tracking-wider mb-3">Local Average <span class="font-normal normal-case text-blue-300">(within 20mi)</span></h3>
                 <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6 mb-6 pb-6 border-b border-white/10">
                     <div>
                         <p class="text-sm text-blue-200 mb-1">Avg Temp</p>
@@ -676,6 +707,11 @@
                         <p class="text-xs text-blue-300" id="wu-avg-rain-sub">--</p>
                         <div id="scale-wu-rain" class="flex gap-0.5 mt-2 h-1.5 w-full"></div>
                     </div>
+                </div>
+
+                <h3 class="text-sm font-semibold text-blue-200 uppercase tracking-wider mb-3">By Direction <span class="font-normal normal-case text-blue-300">&mdash; incoming, 20-100mi</span></h3>
+                <div id="wu-direction-grid" class="grid grid-cols-4 lg:grid-cols-8 gap-3 mb-6 pb-6 border-b border-white/10">
+                    <div class="wu-station-card text-center text-sm text-blue-200 col-span-4 lg:col-span-8">Loading...</div>
                 </div>
 
                 <div id="wu-station-grid" class="wu-station-grid">
@@ -866,9 +902,16 @@
         const wuAvgRainEl = document.getElementById('wu-avg-rain');
         const wuAvgRainSubEl = document.getElementById('wu-avg-rain-sub');
         const wuStationGridEl = document.getElementById('wu-station-grid');
+        const wuDirectionGridEl = document.getElementById('wu-direction-grid');
         const cefasStatusEl = document.getElementById('cefas-status');
         const cefasRefreshBtn = document.getElementById('cefas-refresh-btn');
         const cefasBuoyGridEl = document.getElementById('cefas-buoy-grid');
+        const nowcastRiskBadgeEl = document.getElementById('nowcast-risk-badge');
+        const nowcastMessageEl = document.getElementById('nowcast-message');
+        const nowcastPressureTrendEl = document.getElementById('nowcast-pressure-trend');
+        const nowcastUpwindSectorEl = document.getElementById('nowcast-upwind-sector');
+        const nowcastUpwindRainEl = document.getElementById('nowcast-upwind-rain');
+        const nowcastEtaEl = document.getElementById('nowcast-eta');
         const liveOnlySections = document.querySelectorAll('.live-only');
         
         // Loader elements
@@ -1565,14 +1608,16 @@
                 const res = await fetchBackendJson(`/api/wu/nearby${force ? '?force=1' : ''}`);
                 if (res.status !== 'ok') throw new Error('Invalid WU response');
                 const summary = res.regional_summary || {};
+                const localSummary = res.local_summary || {};
+                const directionalSummary = res.directional_summary || {};
                 const stations = Array.isArray(res.stations) ? res.stations : [];
 
-                const wuAvgTempC = summary.temp_c_avg;
-                const wuAvgHumidity = summary.humidity_pct_avg;
-                const wuAvgWindKmh = summary.wind_speed_kmh_avg;
-                const wuAvgGustKmh = summary.wind_gust_kmh_avg;
-                const wuAvgPressureHpa = summary.pressure_hpa_avg;
-                const wuAvgRainMm = summary.precip_total_mm_avg;
+                const wuAvgTempC = localSummary.temp_c_avg;
+                const wuAvgHumidity = localSummary.humidity_pct_avg;
+                const wuAvgWindKmh = localSummary.wind_speed_kmh_avg;
+                const wuAvgGustKmh = localSummary.wind_gust_kmh_avg;
+                const wuAvgPressureHpa = localSummary.pressure_hpa_avg;
+                const wuAvgRainMm = localSummary.precip_total_mm_avg;
 
                 if (wuAvgTempEl) wuAvgTempEl.textContent = Number.isFinite(wuAvgTempC) ? `${wuAvgTempC.toFixed(1)}°C` : '--';
                 if (wuAvgTempSubEl) wuAvgTempSubEl.textContent = Number.isFinite(wuAvgTempC) ? `(${cToF(wuAvgTempC).toFixed(1)}°F)` : '';
@@ -1630,6 +1675,27 @@
                                 </div>`;
                         }).join('');
                     }
+                }
+
+                if (wuDirectionGridEl) {
+                    const dirOrder = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+                    wuDirectionGridEl.innerHTML = dirOrder.map((oct) => {
+                        const d = directionalSummary[oct] || {};
+                        const tC = Number.isFinite(d.temp_c_avg) ? d.temp_c_avg : null;
+                        const tempDisplay = tC !== null ? `${tC.toFixed(1)}°C` : '--';
+                        const tempSub = tC !== null ? `(${cToF(tC).toFixed(1)}°F)` : '';
+                        const count = d.station_count || 0;
+                        const rainCount = d.stations_reporting_rain || 0;
+                        const nearest = Number.isFinite(d.nearest_distance_mi) ? `${Math.round(d.nearest_distance_mi)}mi+` : '';
+                        return `
+                            <div class="wu-station-card text-center">
+                                <p class="text-xs text-blue-300 font-bold mb-1">${oct}</p>
+                                <p class="text-lg font-bold">${tempDisplay}</p>
+                                <p class="text-[10px] text-blue-300 mb-1">${tempSub}</p>
+                                <p class="text-[10px] text-blue-200">${count ? count + ' stn' + (count === 1 ? '' : 's') : 'no data'}${nearest ? ' · ' + nearest : ''}</p>
+                                ${rainCount > 0 ? `<p class="text-[10px] text-blue-300 mt-1"><i class="ph-fill ph-cloud-rain"></i> ${rainCount}</p>` : ''}
+                            </div>`;
+                    }).join('');
                 }
 
                 if (wuStatusEl) {
@@ -1717,6 +1783,64 @@
                 if (cefasStatusEl) cefasStatusEl.textContent = 'Marine buoy data unavailable.';
                 if (cefasBuoyGridEl) cefasBuoyGridEl.innerHTML = '<div class="wu-station-card text-sm text-red-300">Failed to load buoy data.</div>';
                 console.error('Cefas buoy fetch error:', err);
+            }
+        }
+
+        const NOWCAST_RISK_STYLES = {
+            'low':            'bg-green-500/20 text-green-200 border-green-400/40',
+            'low-moderate':   'bg-lime-500/20 text-lime-200 border-lime-400/40',
+            'moderate':       'bg-yellow-500/20 text-yellow-200 border-yellow-400/40',
+            'moderate-high':  'bg-orange-500/20 text-orange-200 border-orange-400/40',
+            'high':           'bg-red-500/20 text-red-200 border-red-400/40',
+        };
+
+        async function updateNowcast() {
+            if (!CONFIG.USE_BACKEND_PROXY || window.location.protocol === 'file:') {
+                if (nowcastMessageEl) nowcastMessageEl.textContent = 'Nowcast unavailable in file mode.';
+                return;
+            }
+            try {
+                const res = await fetchBackendJson('/api/nowcast');
+                if (res.status !== 'ok') throw new Error('Invalid nowcast response');
+
+                const risk = res.risk_level || 'low';
+                if (nowcastRiskBadgeEl) {
+                    nowcastRiskBadgeEl.className = `self-start md:self-auto px-3 py-1.5 text-sm font-semibold rounded-full border ${NOWCAST_RISK_STYLES[risk] || NOWCAST_RISK_STYLES['low']}`;
+                    nowcastRiskBadgeEl.textContent = risk.charAt(0).toUpperCase() + risk.slice(1).replace('-', ' ') + ' risk';
+                }
+                if (nowcastMessageEl) nowcastMessageEl.textContent = res.message || '--';
+
+                const tendency = res.pressure_tendency || {};
+                if (nowcastPressureTrendEl) {
+                    const t3 = tendency.tendency_3h || 'unknown';
+                    const d3 = Number.isFinite(tendency.delta_3h_hpa) ? `${tendency.delta_3h_hpa > 0 ? '+' : ''}${tendency.delta_3h_hpa.toFixed(1)} hPa` : '';
+                    nowcastPressureTrendEl.textContent = `${t3}${d3 ? ' (' + d3 + ')' : ''}`;
+                }
+
+                const upwind = res.upwind_conditions;
+                if (nowcastUpwindSectorEl) {
+                    nowcastUpwindSectorEl.textContent = res.upwind_sector ? `${res.upwind_sector} (${upwind && Number.isFinite(upwind.station_count) ? upwind.station_count : 0} stations)` : '--';
+                }
+                if (nowcastUpwindRainEl) {
+                    const rainCount = upwind && upwind.stations_reporting_rain;
+                    if (rainCount > 0 && Number.isFinite(upwind.nearest_distance_mi)) {
+                        nowcastUpwindRainEl.textContent = `${rainCount} station${rainCount === 1 ? '' : 's'}, ${upwind.nearest_distance_mi.toFixed(0)}mi away`;
+                    } else {
+                        nowcastUpwindRainEl.textContent = 'None detected';
+                    }
+                }
+                if (nowcastEtaEl) {
+                    nowcastEtaEl.textContent = Number.isFinite(res.eta_minutes)
+                        ? (res.eta_minutes < 60 ? `~${res.eta_minutes} min` : `~${(res.eta_minutes / 60).toFixed(1)} hr`)
+                        : '--';
+                }
+            } catch (err) {
+                if (nowcastMessageEl) nowcastMessageEl.textContent = 'Nowcast unavailable.';
+                if (nowcastRiskBadgeEl) {
+                    nowcastRiskBadgeEl.className = 'self-start md:self-auto px-3 py-1.5 text-sm font-semibold rounded-full bg-gray-500/20 text-gray-300 border border-gray-500/30';
+                    nowcastRiskBadgeEl.textContent = 'Unknown';
+                }
+                console.error('Nowcast fetch error:', err);
             }
         }
 
@@ -1923,6 +2047,8 @@
             setInterval(updateWuStations, 10 * 60 * 1000);
             updateCefasBuoys();
             setInterval(updateCefasBuoys, 15 * 60 * 1000);
+            updateNowcast();
+            setInterval(updateNowcast, 10 * 60 * 1000);
         })();
 
     </script>

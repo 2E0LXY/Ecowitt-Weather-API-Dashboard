@@ -53,6 +53,7 @@ WU_CENTER_LON = float(os.getenv("WU_CENTER_LON", "-1.52"))
 WU_RADIUS_MILES = float(os.getenv("WU_RADIUS_MILES", "100"))
 WU_MIN_STATION_SPACING_MILES = float(os.getenv("WU_MIN_STATION_SPACING_MILES", "10"))
 WU_STATION_LIMIT = max(1, min(40, int(os.getenv("WU_STATION_LIMIT", "24"))))
+WU_LOCAL_RADIUS_MILES = float(os.getenv("WU_LOCAL_RADIUS_MILES", "20"))
 WU_CACHE_TTL_SECONDS = int(os.getenv("WU_CACHE_TTL_SECONDS", "3600"))
 
 CEFAS_API_BASE = "https://wavenet-api.cefas.co.uk/api"
@@ -175,6 +176,14 @@ def _compass_point(bearing_deg):
     return _COMPASS_POINTS[idx]
 
 
+_OCTANTS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+
+
+def _compass_octant(bearing_deg):
+    idx = int((bearing_deg / 45.0) + 0.5) % 8
+    return _OCTANTS[idx]
+
+
 async def _wu_near_search(client, lat, lon):
     """Single nearest-10 lookup; returns [(stationId, name, lat, lon), ...]."""
     try:
@@ -293,14 +302,17 @@ async def fetch_wu_nearby_stations(force=False):
                     try:
                         bearing = _bearing_deg(WU_CENTER_LAT, WU_CENTER_LON, float(obs_lat), float(obs_lon))
                         direction = _compass_point(bearing)
+                        octant = _compass_octant(bearing)
                     except (TypeError, ValueError):
                         direction = None
+                        octant = None
                     return {
                         "station_id": sid,
                         "name": info["name"],
                         "distance_km": round(dist_km, 2),
                         "distance_mi": round(dist_km / 1.60934, 2),
                         "direction_from_centre": direction,
+                        "octant": octant,
                         "lat": obs_lat,
                         "lon": obs_lon,
                         "obs_time_local": obs.get("obsTimeLocal"),
@@ -326,15 +338,49 @@ async def fetch_wu_nearby_stations(force=False):
         stations = [s for s in station_results if s]
         stations.sort(key=lambda s: s["distance_km"])
 
-    def avg(field):
-        vals = [s[field] for s in stations if isinstance(s.get(field), (int, float))]
+    def avg(items, field):
+        vals = [s[field] for s in items if isinstance(s.get(field), (int, float))]
         return round(sum(vals) / len(vals), 2) if vals else None
+
+    def summarize(items):
+        return {
+            "station_count": len(items),
+            "temp_c_avg": avg(items, "temp_c"),
+            "humidity_pct_avg": avg(items, "humidity_pct"),
+            "wind_speed_kmh_avg": avg(items, "wind_speed_kmh"),
+            "wind_gust_kmh_avg": avg(items, "wind_gust_kmh"),
+            "wind_gust_kmh_max": max([s["wind_gust_kmh"] for s in items if isinstance(s.get("wind_gust_kmh"), (int, float))], default=None),
+            "pressure_hpa_avg": avg(items, "pressure_hpa"),
+            "precip_total_mm_avg": avg(items, "precip_total_mm"),
+            "precip_total_mm_max": max([s["precip_total_mm"] for s in items if isinstance(s.get("precip_total_mm"), (int, float))], default=None),
+            "stations_reporting_rain": sum(1 for s in items if isinstance(s.get("precip_rate_mmhr"), (int, float)) and s["precip_rate_mmhr"] > 0),
+        }
+
+    # Local Average: true near-field conditions, not blended with distant stations
+    local_stations = [s for s in stations if s["distance_mi"] <= WU_LOCAL_RADIUS_MILES]
+    local_summary = summarize(local_stations)
+    local_summary["radius_miles"] = WU_LOCAL_RADIUS_MILES
+
+    # By-direction breakdown of the far-field stations (>local radius), for
+    # spotting weather approaching from a specific compass sector.
+    directional_stations = [s for s in stations if s["distance_mi"] > WU_LOCAL_RADIUS_MILES]
+    directional_summary = {}
+    for octant in _OCTANTS:
+        octant_stations = [s for s in directional_stations if s.get("octant") == octant]
+        entry = summarize(octant_stations)
+        entry["nearest_distance_mi"] = min((s["distance_mi"] for s in octant_stations), default=None)
+        entry["farthest_distance_mi"] = max((s["distance_mi"] for s in octant_stations), default=None)
+        directional_summary[octant] = entry
+
+    # Overall blended summary kept for backward compatibility / fallback use
+    overall_summary = summarize(stations)
 
     payload = {
         "status": "ok",
         "source": "Weather Underground PWS Network",
         "center": {"lat": WU_CENTER_LAT, "lon": WU_CENTER_LON},
         "radius_miles": WU_RADIUS_MILES,
+        "local_radius_miles": WU_LOCAL_RADIUS_MILES,
         "min_spacing_miles": WU_MIN_STATION_SPACING_MILES,
         "cached": False,
         "cache_age_seconds": 0,
@@ -342,17 +388,9 @@ async def fetch_wu_nearby_stations(force=False):
         "stations_in_radius": stations_in_radius,
         "station_count": len(stations),
         "stations": stations,
-        "regional_summary": {
-            "temp_c_avg": avg("temp_c"),
-            "humidity_pct_avg": avg("humidity_pct"),
-            "wind_speed_kmh_avg": avg("wind_speed_kmh"),
-            "wind_gust_kmh_avg": avg("wind_gust_kmh"),
-            "wind_gust_kmh_max": max([s["wind_gust_kmh"] for s in stations if isinstance(s.get("wind_gust_kmh"), (int, float))], default=None),
-            "pressure_hpa_avg": avg("pressure_hpa"),
-            "precip_total_mm_avg": avg("precip_total_mm"),
-            "precip_total_mm_max": max([s["precip_total_mm"] for s in stations if isinstance(s.get("precip_total_mm"), (int, float))], default=None),
-            "stations_reporting_rain": sum(1 for s in stations if isinstance(s.get("precip_rate_mmhr"), (int, float)) and s["precip_rate_mmhr"] > 0),
-        },
+        "local_summary": local_summary,
+        "directional_summary": directional_summary,
+        "regional_summary": overall_summary,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
     _wu_cache["payload"] = deepcopy(payload)
@@ -470,6 +508,157 @@ async def fetch_cefas_buoys(force=False):
     _cefas_cache["payload"] = deepcopy(payload)
     _cefas_cache["ts"] = time.time()
     return payload
+
+
+async def compute_pressure_tendency():
+    """Barometric pressure trend over 3h/6h from our own stored snapshots.
+    Classic manual-forecasting technique - no external data involved."""
+    with db_conn() as conn:
+        latest = conn.execute(
+            "SELECT captured_at, pressure_inhg FROM weather_snapshots "
+            "WHERE pressure_inhg IS NOT NULL ORDER BY captured_at DESC LIMIT 1"
+        ).fetchone()
+        if not latest:
+            return None
+
+        def pressure_at(hours_ago):
+            row = conn.execute(
+                """SELECT pressure_inhg FROM weather_snapshots
+                   WHERE captured_at <= datetime('now', ?) AND pressure_inhg IS NOT NULL
+                   ORDER BY captured_at DESC LIMIT 1""",
+                (f"-{hours_ago} hours",),
+            ).fetchone()
+            return row["pressure_inhg"] if row else None
+
+        p_now = latest["pressure_inhg"]
+        p_3h = pressure_at(3)
+        p_6h = pressure_at(6)
+
+    def to_hpa(inhg):
+        return inhg * 33.8639 if inhg is not None else None
+
+    hpa_now = to_hpa(p_now)
+
+    def delta_hpa(p_then):
+        if p_then is None:
+            return None
+        return round(hpa_now - to_hpa(p_then), 2)
+
+    delta_3h = delta_hpa(p_3h)
+    delta_6h = delta_hpa(p_6h)
+
+    def classify(delta, hours):
+        if delta is None:
+            return "unknown"
+        rate = delta / hours
+        if rate <= -2.0:
+            return "falling rapidly"
+        if rate <= -0.5:
+            return "falling"
+        if rate >= 2.0:
+            return "rising rapidly"
+        if rate >= 0.5:
+            return "rising"
+        return "steady"
+
+    return {
+        "pressure_hpa_now": round(hpa_now, 1) if hpa_now is not None else None,
+        "delta_3h_hpa": delta_3h,
+        "delta_6h_hpa": delta_6h,
+        "tendency_3h": classify(delta_3h, 3),
+        "tendency_6h": classify(delta_6h, 6),
+    }
+
+
+NOWCAST_ASSUMED_SPEED_MPH = float(os.getenv("NOWCAST_ASSUMED_SPEED_MPH", "25"))
+
+
+async def compute_nowcast():
+    """Rule-based short-term (1-3h) nowcast built entirely in-house from data
+    already being collected: own station's current wind direction (to find
+    the upwind compass sector), our own barometric pressure tendency, and
+    the WU regional network's directional_summary (already computed for the
+    dashboard's direction breakdown). No external forecast model is used -
+    this is a deliberately self-contained, deterministic prediction layer.
+    """
+    try:
+        current_payload = await fetch_current_from_ecowitt()
+        current_data = current_payload.get("data", {})
+        wind_dir_raw = current_data.get("wind", {}).get("wind_direction", {}).get("value")
+        own_wind_dir = to_float(wind_dir_raw)
+    except Exception:
+        own_wind_dir = None
+
+    tendency = await compute_pressure_tendency()
+
+    # Wind direction is reported as the direction the wind is blowing FROM,
+    # so that compass octant is exactly the upwind sector to watch.
+    upwind_octant = _compass_octant(own_wind_dir) if own_wind_dir is not None else None
+
+    upwind_info = None
+    try:
+        wu_data = await fetch_wu_nearby_stations()
+        directional = wu_data.get("directional_summary", {})
+        if upwind_octant and upwind_octant in directional:
+            sector = directional[upwind_octant]
+            upwind_info = {
+                "sector": upwind_octant,
+                "station_count": sector.get("station_count"),
+                "stations_reporting_rain": sector.get("stations_reporting_rain"),
+                "nearest_distance_mi": sector.get("nearest_distance_mi"),
+                "temp_c_avg": sector.get("temp_c_avg"),
+                "wind_speed_kmh_avg": sector.get("wind_speed_kmh_avg"),
+            }
+    except Exception:
+        upwind_info = None
+
+    rain_upwind = bool(upwind_info and (upwind_info.get("stations_reporting_rain") or 0) > 0)
+    tendency_3h = tendency.get("tendency_3h") if tendency else "unknown"
+    falling = tendency_3h in ("falling", "falling rapidly")
+    rapidly_falling = tendency_3h == "falling rapidly"
+
+    eta_minutes = None
+    if rain_upwind and upwind_info.get("nearest_distance_mi"):
+        eta_minutes = round((upwind_info["nearest_distance_mi"] / NOWCAST_ASSUMED_SPEED_MPH) * 60)
+
+    message_parts = []
+    if rain_upwind and rapidly_falling:
+        risk_level = "high"
+        message_parts.append(f"Rain detected upwind ({upwind_octant}) with rapidly falling pressure")
+    elif rain_upwind and falling:
+        risk_level = "moderate-high"
+        message_parts.append(f"Rain detected upwind ({upwind_octant}) with falling pressure")
+    elif rain_upwind:
+        risk_level = "moderate"
+        message_parts.append(f"Rain detected upwind ({upwind_octant}); pressure currently steady or rising")
+    elif rapidly_falling:
+        risk_level = "moderate"
+        message_parts.append("Pressure falling rapidly - conditions may deteriorate even though no rain detected upwind yet")
+    elif falling:
+        risk_level = "low-moderate"
+        message_parts.append("Pressure gently falling - worth keeping an eye on conditions")
+    else:
+        risk_level = "low"
+        message_parts.append("No rain detected upwind and pressure is steady or rising")
+
+    if eta_minutes is not None:
+        if eta_minutes < 60:
+            message_parts.append(f"possible arrival in roughly {eta_minutes} minutes (assumes ~{int(NOWCAST_ASSUMED_SPEED_MPH)}mph system speed - a rough estimate, not a precise forecast)")
+        else:
+            message_parts.append(f"possible arrival in roughly {round(eta_minutes / 60, 1)} hours (assumes ~{int(NOWCAST_ASSUMED_SPEED_MPH)}mph system speed - a rough estimate, not a precise forecast)")
+
+    return {
+        "status": "ok",
+        "method": "Self-computed, rule-based: own pressure tendency + upwind regional station network. No external forecast API used.",
+        "own_wind_direction_deg": own_wind_dir,
+        "upwind_sector": upwind_octant,
+        "pressure_tendency": tendency,
+        "upwind_conditions": upwind_info,
+        "risk_level": risk_level,
+        "eta_minutes": eta_minutes,
+        "message": ". ".join(message_parts) + ".",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 def init_db():
@@ -593,9 +782,19 @@ async def call_gemini_forecast(context_payload, satellite_ai_images=None):
         "synoptic-scale reasoning: compare conditions between compass sectors to infer which direction a front, "
         "shower band, or temperature change is approaching from, and roughly how far away it is. Mention notable "
         "regional variation or an approaching change in conditions if relevant.\n"
+        "regional_stations.local_summary is the true near-field average (within local_radius_miles, ~20mi) - use "
+        "this for describing current local conditions around Tingley, not the wider mix. "
+        "regional_stations.directional_summary breaks the remaining stations (beyond local_radius_miles, out to "
+        "the full radius) into 8 compass sectors (N/NE/E/SE/S/SW/W/NW), each with its own averages and station "
+        "count. Compare local_summary against each sector to identify which direction shows the most different "
+        "conditions (cooler, wetter, windier, lower pressure) - that sector is the most likely source of "
+        "incoming change in the next several hours. Mention the sector by compass direction when relevant.\n"
         "If coastal_marine data is present, use it for additional coastal context: sea temperature relative to "
         "land temperature can indicate sea-breeze effects on the East Yorkshire coast, and wave height/period can "
         "hint at offshore wind strength feeding into the region. Only mention this if genuinely relevant.\n"
+        "If local_nowcast data is present, treat it as a second independent short-term (1-3h) signal computed from "
+        "our own pressure tendency and upwind regional stations. State briefly whether it agrees or disagrees with "
+        "your own reading of the satellite and regional data, but do not just repeat its message verbatim.\n"
         "Keep text concise and plain English for a dashboard.\n\n"
         f"DATA:\n{json.dumps(context_payload, ensure_ascii=True)}"
     )
@@ -868,6 +1067,11 @@ async def api_cefas_buoys(force: bool = False):
     return await fetch_cefas_buoys(force=force)
 
 
+@app.get("/api/nowcast")
+async def api_nowcast():
+    return await compute_nowcast()
+
+
 @app.get("/api/current")
 async def api_current(save: bool = False):
     payload = await fetch_current_from_ecowitt()
@@ -1019,9 +1223,11 @@ async def api_ai_forecast():
             "source": wu_data.get("source"),
             "centre": "Tingley, Leeds, UK",
             "radius_miles": wu_data.get("radius_miles"),
+            "local_radius_miles": wu_data.get("local_radius_miles"),
             "min_spacing_miles": wu_data.get("min_spacing_miles"),
             "station_count": wu_data.get("station_count"),
-            "regional_summary": wu_data.get("regional_summary"),
+            "local_summary": wu_data.get("local_summary"),
+            "directional_summary": wu_data.get("directional_summary"),
             "stations": [
                 {
                     "name": s.get("name"),
@@ -1065,6 +1271,11 @@ async def api_ai_forecast():
         }
     except Exception as exc:
         context_payload["coastal_marine"] = {"error": str(exc)}
+
+    try:
+        context_payload["local_nowcast"] = await compute_nowcast()
+    except Exception as exc:
+        context_payload["local_nowcast"] = {"error": str(exc)}
 
     in_retry_cooldown = _ai_last_failure_ts > 0 and (now - _ai_last_failure_ts) < AI_RETRY_COOLDOWN_SECONDS
     if in_retry_cooldown:

@@ -15,7 +15,7 @@
         }
 
         # Local FastAPI backend routes
-        @weather_api path /api/current /api/current* /api/snapshot /api/snapshot* /api/snapshots /api/snapshots* /api/trend /api/trend* /api/stats /api/stats* /api/ai-forecast /api/ai-forecast* /api/satellite/* /weather-dashboard/api/satellite/* /api/wu/* /api/wu/* /weather-dashboard/api/wu/* /api/cefas/* /weather-dashboard/api/cefas/*
+        @weather_api path /api/current /api/current* /api/snapshot /api/snapshot* /api/snapshots /api/snapshots* /api/trend /api/trend* /api/stats /api/stats* /api/ai-forecast /api/ai-forecast* /api/satellite/* /weather-dashboard/api/satellite/* /api/wu/* /api/wu/* /weather-dashboard/api/wu/* /api/cefas/* /weather-dashboard/api/cefas/* /api/nowcast /api/nowcast* /weather-dashboard/api/nowcast
         handle @weather_api {
             uri strip_prefix /weather-dashboard
             reverse_proxy 127.0.0.1:8000
