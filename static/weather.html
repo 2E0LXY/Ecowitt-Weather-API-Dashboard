@@ -682,6 +682,29 @@
                     <div class="wu-station-card text-sm text-blue-200">Loading stations...</div>
                 </div>
             </section>
+
+            <section class="glass-card p-5 mb-6 live-only">
+                <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+                    <div>
+                        <h2 class="text-lg font-semibold text-blue-200 flex items-center gap-2">
+                            <i class="ph ph-waves"></i> Coastal &amp; Marine Conditions <span class="text-sm font-normal text-blue-300">(Cefas WaveNet, 100mi radius)</span>
+                        </h2>
+                        <p id="cefas-status" class="text-sm text-blue-200 mt-1">Loading marine buoy data...</p>
+                    </div>
+                    <button id="cefas-refresh-btn" class="self-start md:self-auto flex items-center gap-2 bg-sky-600 hover:bg-sky-500 text-white px-3 py-2 rounded-full text-sm font-semibold transition-colors">
+                        <i class="ph-bold ph-arrows-clockwise"></i>
+                        Refresh
+                    </button>
+                </div>
+
+                <div id="cefas-buoy-grid" class="wu-station-grid">
+                    <div class="wu-station-card text-sm text-blue-200">Loading buoys...</div>
+                </div>
+
+                <p class="text-xs text-blue-300 mt-4 pt-4 border-t border-white/10">
+                    Data provided by Cefas WaveNet / Channel Coastal Observatory under the Open Government Licence.
+                </p>
+            </section>
         </div>
 
         <!-- Historic View -->
@@ -843,6 +866,9 @@
         const wuAvgRainEl = document.getElementById('wu-avg-rain');
         const wuAvgRainSubEl = document.getElementById('wu-avg-rain-sub');
         const wuStationGridEl = document.getElementById('wu-station-grid');
+        const cefasStatusEl = document.getElementById('cefas-status');
+        const cefasRefreshBtn = document.getElementById('cefas-refresh-btn');
+        const cefasBuoyGridEl = document.getElementById('cefas-buoy-grid');
         const liveOnlySections = document.querySelectorAll('.live-only');
         
         // Loader elements
@@ -1626,6 +1652,74 @@
             }
         }
 
+        function cefasTimeAgo(isoLocal) {
+            if (!isoLocal) return '--';
+            const t = new Date(isoLocal.endsWith('Z') ? isoLocal : isoLocal + 'Z');
+            if (isNaN(t.getTime())) return '--';
+            const diffMin = Math.round((Date.now() - t.getTime()) / 60000);
+            if (diffMin < 1) return 'just now';
+            if (diffMin < 60) return `${diffMin}m ago`;
+            const diffHr = Math.round(diffMin / 60);
+            return `${diffHr}h ago`;
+        }
+
+        async function updateCefasBuoys(force = false) {
+            if (!CONFIG.USE_BACKEND_PROXY || window.location.protocol === 'file:') {
+                if (cefasStatusEl) cefasStatusEl.textContent = 'Marine buoy data unavailable in file mode.';
+                return;
+            }
+            try {
+                if (cefasStatusEl) cefasStatusEl.textContent = 'Loading marine buoy data...';
+                const res = await fetchBackendJson(`/api/cefas/buoys${force ? '?force=1' : ''}`);
+                if (res.status !== 'ok') throw new Error('Invalid Cefas response');
+                const buoys = Array.isArray(res.buoys) ? res.buoys : [];
+
+                if (cefasBuoyGridEl) {
+                    if (!buoys.length) {
+                        cefasBuoyGridEl.innerHTML = '<div class="wu-station-card text-sm text-blue-200">No buoys found within range.</div>';
+                    } else {
+                        cefasBuoyGridEl.innerHTML = buoys.map((b) => {
+                            const seaTempC = Number.isFinite(b.sea_temp_c) ? b.sea_temp_c : null;
+                            const seaTempDisplay = seaTempC !== null ? `${seaTempC.toFixed(1)}°C (${cToF(seaTempC).toFixed(1)}°F)` : '--';
+                            const waveH = Number.isFinite(b.wave_height_m) ? `${b.wave_height_m.toFixed(2)} m` : '--';
+                            const wavePeriod = Number.isFinite(b.wave_period_peak_s) ? `${b.wave_period_peak_s.toFixed(1)} s` : '--';
+                            const waveDirText = wuTrendIcon(b.wave_direction_deg);
+                            const waveDirDisplay = Number.isFinite(b.wave_direction_deg) ? `${Math.round(b.wave_direction_deg)}°${waveDirText ? ' ' + waveDirText : ''}` : '--';
+                            const overdueFlag = b.overdue ? '<span class="text-yellow-400" title="Data more than 3 hours old"><i class="ph-fill ph-warning-circle"></i></span>' : '';
+                            return `
+                                <div class="wu-station-card">
+                                    <div class="flex justify-between items-start mb-2">
+                                        <div>
+                                            <p class="font-semibold text-sm">${b.name || b.id}</p>
+                                            <p class="text-xs text-blue-300">${Number.isFinite(b.distance_mi) ? b.distance_mi.toFixed(1) + ' mi' : ''}${b.direction_from_centre ? ' ' + b.direction_from_centre : ''}</p>
+                                        </div>
+                                        ${overdueFlag}
+                                    </div>
+                                    <div class="grid grid-cols-2 gap-x-2 gap-y-1 text-xs text-blue-200">
+                                        <span>Sea Temp</span><span class="text-right text-white font-medium">${seaTempDisplay}</span>
+                                        <span>Wave Height</span><span class="text-right text-white font-medium">${waveH}</span>
+                                        <span>Wave Period</span><span class="text-right text-white font-medium">${wavePeriod}</span>
+                                        <span>Wave Dir</span><span class="text-right text-white font-medium">${waveDirDisplay}</span>
+                                        <span>Updated</span><span class="text-right text-white font-medium">${cefasTimeAgo(b.timestamp)}</span>
+                                    </div>
+                                </div>`;
+                        }).join('');
+                    }
+                }
+
+                if (cefasStatusEl) {
+                    const count = res.buoy_count || buoys.length;
+                    const radius = Number.isFinite(res.radius_miles) ? res.radius_miles : 100;
+                    const cachedTxt = res.cached ? ' (cached)' : '';
+                    cefasStatusEl.textContent = `${count} buoys within ${radius}mi loaded${cachedTxt}.`;
+                }
+            } catch (err) {
+                if (cefasStatusEl) cefasStatusEl.textContent = 'Marine buoy data unavailable.';
+                if (cefasBuoyGridEl) cefasBuoyGridEl.innerHTML = '<div class="wu-station-card text-sm text-red-300">Failed to load buoy data.</div>';
+                console.error('Cefas buoy fetch error:', err);
+            }
+        }
+
         // --- Historic Data Logic ---
         async function fetchHistoricData() {
             resetLoader();
@@ -1815,6 +1909,7 @@
         }
 
         if (wuRefreshBtn) wuRefreshBtn.addEventListener('click', () => updateWuStations(true));
+        if (cefasRefreshBtn) cefasRefreshBtn.addEventListener('click', () => updateCefasBuoys(true));
 
         (async () => {
             await fastPrefillFromDatabase();
@@ -1826,6 +1921,8 @@
             setInterval(updateSatelliteImage, 5 * 60 * 1000);
             updateWuStations();
             setInterval(updateWuStations, 10 * 60 * 1000);
+            updateCefasBuoys();
+            setInterval(updateCefasBuoys, 15 * 60 * 1000);
         })();
 
     </script>

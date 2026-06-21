@@ -55,6 +55,11 @@ WU_MIN_STATION_SPACING_MILES = float(os.getenv("WU_MIN_STATION_SPACING_MILES", "
 WU_STATION_LIMIT = max(1, min(40, int(os.getenv("WU_STATION_LIMIT", "24"))))
 WU_CACHE_TTL_SECONDS = int(os.getenv("WU_CACHE_TTL_SECONDS", "3600"))
 
+CEFAS_API_BASE = "https://wavenet-api.cefas.co.uk/api"
+CEFAS_RADIUS_MILES = float(os.getenv("CEFAS_RADIUS_MILES", "100"))
+CEFAS_BUOY_LIMIT = max(1, min(20, int(os.getenv("CEFAS_BUOY_LIMIT", "12"))))
+CEFAS_CACHE_TTL_SECONDS = int(os.getenv("CEFAS_CACHE_TTL_SECONDS", "1800"))
+
 STATIC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "static"))
 
 AI_CACHE_TTL_SECONDS = 900
@@ -64,6 +69,7 @@ _ai_last_failure_ts = 0.0
 SATELLITE_CACHE_TTL_SECONDS = 300
 _satellite_cache = {"ts": 0.0, "payload": None}
 _wu_cache = {"ts": 0.0, "payload": None}
+_cefas_cache = {"ts": 0.0, "payload": None}
 
 
 def db_conn():
@@ -354,6 +360,118 @@ async def fetch_wu_nearby_stations(force=False):
     return payload
 
 
+def _safe_float(value):
+    try:
+        if value is None or value == "":
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+async def fetch_cefas_buoys(force=False):
+    """Fetch live Cefas WaveNet marine buoy data within CEFAS_RADIUS_MILES of
+    the configured centre point.
+
+    Public, unauthenticated GeoJSON endpoint maintained by Cefas (Centre for
+    Environment, Fisheries and Aquaculture Science). Data is licensed under
+    the Open Government Licence - acknowledgement required, no API key needed.
+    """
+    now = time.time()
+    if not force and _cefas_cache["payload"] and (now - _cefas_cache["ts"] < CEFAS_CACHE_TTL_SECONDS):
+        cached = deepcopy(_cefas_cache["payload"])
+        cached["cached"] = True
+        cached["cache_age_seconds"] = int(now - _cefas_cache["ts"])
+        return cached
+
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            resp = await client.get(f"{CEFAS_API_BASE}/Map/Current")
+            resp.raise_for_status()
+            geojson = resp.json()
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(status_code=502, detail=f"Cefas WaveNet HTTP error {exc.response.status_code}") from exc
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail=f"Cefas WaveNet request error: {exc}") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail="Cefas WaveNet returned invalid JSON") from exc
+
+    scored = []
+    for feature in geojson.get("features", []):
+        try:
+            lon, lat = feature["geometry"]["coordinates"]
+        except (KeyError, ValueError, TypeError):
+            continue
+        dist_km = _haversine_km(WU_CENTER_LAT, WU_CENTER_LON, lat, lon)
+        dist_mi = dist_km / 1.60934
+        if dist_mi > CEFAS_RADIUS_MILES:
+            continue
+        scored.append((dist_mi, lat, lon, feature))
+    scored.sort(key=lambda x: x[0])
+    scored = scored[:CEFAS_BUOY_LIMIT]
+
+    buoys = []
+    for dist_mi, lat, lon, feature in scored:
+        props = feature.get("properties", {})
+        results = props.get("results", {})
+
+        def result_value(key):
+            entry = results.get(key, {})
+            values = entry.get("values", [])
+            return _safe_float(values[0]) if values else None
+
+        try:
+            bearing = _bearing_deg(WU_CENTER_LAT, WU_CENTER_LON, lat, lon)
+            direction = _compass_point(bearing)
+        except (TypeError, ValueError):
+            direction = None
+
+        buoys.append({
+            "id": props.get("id"),
+            "name": props.get("title"),
+            "provider": props.get("provider"),
+            "distance_mi": round(dist_mi, 1),
+            "direction_from_centre": direction,
+            "lat": lat,
+            "lon": lon,
+            "timestamp": props.get("timestamp"),
+            "overdue": bool(props.get("overdue")),
+            "wave_height_m": result_value("Hm0"),
+            "sea_temp_c": result_value("TEMP"),
+            "wave_period_zero_s": result_value("Tz"),
+            "wave_period_peak_s": result_value("Tpeak"),
+            "wave_spread_deg": result_value("W_SPR"),
+            "wave_direction_deg": result_value("W_PDIR"),
+        })
+
+    def avg(field):
+        vals = [b[field] for b in buoys if isinstance(b.get(field), (int, float))]
+        return round(sum(vals) / len(vals), 2) if vals else None
+
+    payload = {
+        "status": "ok",
+        "source": "Cefas WaveNet (Channel Coastal Observatory / Cefas)",
+        "license": "Open Government Licence - https://wavenet-api.cefas.co.uk/api/Licence/1/Download",
+        "centre": {"lat": WU_CENTER_LAT, "lon": WU_CENTER_LON},
+        "radius_miles": CEFAS_RADIUS_MILES,
+        "cached": False,
+        "cache_age_seconds": 0,
+        "buoy_count": len(buoys),
+        "buoys": buoys,
+        "regional_summary": {
+            "wave_height_m_avg": avg("wave_height_m"),
+            "wave_height_m_max": max([b["wave_height_m"] for b in buoys if isinstance(b.get("wave_height_m"), (int, float))], default=None),
+            "sea_temp_c_avg": avg("sea_temp_c"),
+            "sea_temp_c_min": min([b["sea_temp_c"] for b in buoys if isinstance(b.get("sea_temp_c"), (int, float))], default=None),
+            "sea_temp_c_max": max([b["sea_temp_c"] for b in buoys if isinstance(b.get("sea_temp_c"), (int, float))], default=None),
+        },
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    _cefas_cache["payload"] = deepcopy(payload)
+    _cefas_cache["ts"] = time.time()
+    return payload
+
+
 def init_db():
     os.makedirs(os.path.dirname(os.path.abspath(DB_PATH)), exist_ok=True)
     with db_conn() as conn:
@@ -475,6 +593,9 @@ async def call_gemini_forecast(context_payload, satellite_ai_images=None):
         "synoptic-scale reasoning: compare conditions between compass sectors to infer which direction a front, "
         "shower band, or temperature change is approaching from, and roughly how far away it is. Mention notable "
         "regional variation or an approaching change in conditions if relevant.\n"
+        "If coastal_marine data is present, use it for additional coastal context: sea temperature relative to "
+        "land temperature can indicate sea-breeze effects on the East Yorkshire coast, and wave height/period can "
+        "hint at offshore wind strength feeding into the region. Only mention this if genuinely relevant.\n"
         "Keep text concise and plain English for a dashboard.\n\n"
         f"DATA:\n{json.dumps(context_payload, ensure_ascii=True)}"
     )
@@ -742,6 +863,11 @@ async def api_wu_nearby(force: bool = False):
     return await fetch_wu_nearby_stations(force=force)
 
 
+@app.get("/api/cefas/buoys")
+async def api_cefas_buoys(force: bool = False):
+    return await fetch_cefas_buoys(force=force)
+
+
 @app.get("/api/current")
 async def api_current(save: bool = False):
     payload = await fetch_current_from_ecowitt()
@@ -915,6 +1041,30 @@ async def api_ai_forecast():
         }
     except Exception as exc:
         context_payload["regional_stations"] = {"error": str(exc)}
+
+    try:
+        cefas_data = await fetch_cefas_buoys()
+        context_payload["coastal_marine"] = {
+            "source": cefas_data.get("source"),
+            "radius_miles": cefas_data.get("radius_miles"),
+            "buoy_count": cefas_data.get("buoy_count"),
+            "regional_summary": cefas_data.get("regional_summary"),
+            "buoys": [
+                {
+                    "name": b.get("name"),
+                    "distance_mi": b.get("distance_mi"),
+                    "direction_from_centre": b.get("direction_from_centre"),
+                    "sea_temp_c": b.get("sea_temp_c"),
+                    "wave_height_m": b.get("wave_height_m"),
+                    "wave_period_peak_s": b.get("wave_period_peak_s"),
+                    "wave_direction_deg": b.get("wave_direction_deg"),
+                    "overdue": b.get("overdue"),
+                }
+                for b in cefas_data.get("buoys", [])
+            ],
+        }
+    except Exception as exc:
+        context_payload["coastal_marine"] = {"error": str(exc)}
 
     in_retry_cooldown = _ai_last_failure_ts > 0 and (now - _ai_last_failure_ts) < AI_RETRY_COOLDOWN_SECONDS
     if in_retry_cooldown:
