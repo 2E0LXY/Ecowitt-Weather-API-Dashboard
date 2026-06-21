@@ -150,6 +150,25 @@ def _destination_point(lat, lon, bearing_deg, distance_km):
     return math.degrees(phi2), math.degrees(lam2)
 
 
+def _bearing_deg(lat1, lon1, lat2, lon2):
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    dlambda = math.radians(lon2 - lon1)
+    y = math.sin(dlambda) * math.cos(phi2)
+    x = math.cos(phi1) * math.sin(phi2) - math.sin(phi1) * math.cos(phi2) * math.cos(dlambda)
+    theta = math.atan2(y, x)
+    return (math.degrees(theta) + 360) % 360
+
+
+_COMPASS_POINTS = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
+                   "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"]
+
+
+def _compass_point(bearing_deg):
+    idx = int((bearing_deg / 22.5) + 0.5) % 16
+    return _COMPASS_POINTS[idx]
+
+
 async def _wu_near_search(client, lat, lon):
     """Single nearest-10 lookup; returns [(stationId, name, lat, lon), ...]."""
     try:
@@ -263,13 +282,21 @@ async def fetch_wu_nearby_stations(force=False):
                         return None
                     obs = observations[0]
                     metric = obs.get("metric", {})
+                    obs_lat = obs.get("lat", info["lat"])
+                    obs_lon = obs.get("lon", info["lon"])
+                    try:
+                        bearing = _bearing_deg(WU_CENTER_LAT, WU_CENTER_LON, float(obs_lat), float(obs_lon))
+                        direction = _compass_point(bearing)
+                    except (TypeError, ValueError):
+                        direction = None
                     return {
                         "station_id": sid,
                         "name": info["name"],
                         "distance_km": round(dist_km, 2),
                         "distance_mi": round(dist_km / 1.60934, 2),
-                        "lat": obs.get("lat", info["lat"]),
-                        "lon": obs.get("lon", info["lon"]),
+                        "direction_from_centre": direction,
+                        "lat": obs_lat,
+                        "lon": obs_lon,
                         "obs_time_local": obs.get("obsTimeLocal"),
                         "neighborhood": obs.get("neighborhood"),
                         "temp_c": metric.get("temp"),
@@ -443,7 +470,11 @@ async def call_gemini_forecast(context_payload, satellite_ai_images=None):
         "If regional_stations data is present, cross-reference it with the satellite imagery: use nearby station "
         "temperature, humidity, wind, pressure and rain readings to corroborate or refine what the satellite shows "
         "(e.g. confirm actual rainfall under cloud cover, detect wind shifts ahead of a front, or pressure drops "
-        "indicating an approaching system). Mention notable regional variation if relevant.\n"
+        "indicating an approaching system). Each station includes direction_from_centre (a compass bearing such as "
+        "NW, SE) and distance_mi from Tingley, spread across up to a 100-mile radius. Use this spatial layout for "
+        "synoptic-scale reasoning: compare conditions between compass sectors to infer which direction a front, "
+        "shower band, or temperature change is approaching from, and roughly how far away it is. Mention notable "
+        "regional variation or an approaching change in conditions if relevant.\n"
         "Keep text concise and plain English for a dashboard.\n\n"
         f"DATA:\n{json.dumps(context_payload, ensure_ascii=True)}"
     )
@@ -860,16 +891,21 @@ async def api_ai_forecast():
         wu_data = await fetch_wu_nearby_stations()
         context_payload["regional_stations"] = {
             "source": wu_data.get("source"),
+            "centre": "Tingley, Leeds, UK",
+            "radius_miles": wu_data.get("radius_miles"),
+            "min_spacing_miles": wu_data.get("min_spacing_miles"),
             "station_count": wu_data.get("station_count"),
             "regional_summary": wu_data.get("regional_summary"),
             "stations": [
                 {
                     "name": s.get("name"),
-                    "distance_km": s.get("distance_km"),
+                    "distance_mi": s.get("distance_mi"),
+                    "direction_from_centre": s.get("direction_from_centre"),
                     "temp_c": s.get("temp_c"),
                     "humidity_pct": s.get("humidity_pct"),
                     "wind_speed_kmh": s.get("wind_speed_kmh"),
                     "wind_gust_kmh": s.get("wind_gust_kmh"),
+                    "wind_dir_deg": s.get("wind_dir_deg"),
                     "precip_rate_mmhr": s.get("precip_rate_mmhr"),
                     "precip_total_mm": s.get("precip_total_mm"),
                     "pressure_hpa": s.get("pressure_hpa"),
