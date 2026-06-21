@@ -497,6 +497,48 @@
                             </div>
                         </div>
                     </section>
+
+                    <!-- Sunrise / Daylight Card -->
+                    <div class="glass-card p-6">
+                        <h2 class="text-lg font-semibold text-blue-200 mb-4 flex items-center gap-2">
+                            <i class="ph-fill ph-sun"></i> Sunrise &amp; Daylight
+                        </h2>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div>
+                                <p class="text-sm text-blue-200 mb-1">Sunrise</p>
+                                <p class="text-2xl font-bold" id="sun-sunrise">--:--</p>
+                            </div>
+                            <div>
+                                <p class="text-sm text-blue-200 mb-1">Sunset</p>
+                                <p class="text-2xl font-bold" id="sun-sunset">--:--</p>
+                            </div>
+                            <div>
+                                <p class="text-sm text-blue-200 mb-1">Daylight</p>
+                                <p class="text-2xl font-bold" id="sun-daylight">--h --m</p>
+                            </div>
+                            <div>
+                                <p class="text-sm text-blue-200 mb-1" id="sun-countdown-label">Next</p>
+                                <p class="text-2xl font-bold" id="sun-countdown">--</p>
+                            </div>
+                        </div>
+                        <div class="mt-4 pt-4 border-t border-white/10 flex justify-between items-center text-sm text-blue-200">
+                            <span>Solar Noon</span>
+                            <span class="font-semibold text-white" id="sun-noon">--:--</span>
+                        </div>
+                    </div>
+
+                    <!-- Mini 24h Trend Card -->
+                    <div class="glass-card p-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <h2 class="text-lg font-semibold text-blue-200 flex items-center gap-2">
+                                <i class="ph ph-chart-line"></i> 24h Trend
+                            </h2>
+                            <span class="text-xs text-blue-300">Temperature &amp; Rain Rate</span>
+                        </div>
+                        <div class="rounded-lg bg-white/5 border border-white/10 p-3">
+                            <canvas id="mini-trend-chart" height="90"></canvas>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Right Column (Sensors) -->
@@ -836,6 +878,7 @@
         let aiForecastInFlight = false;
         let aiForecastLastSuccessAt = 0;
         let histCharts = {};
+        let miniTrendChart = null;
         const currentOverlay = {
             tempC: null,
             humidity: null,
@@ -901,6 +944,122 @@
         const wuAvgPressureSubEl = document.getElementById('wu-avg-pressure-sub');
         const wuAvgRainEl = document.getElementById('wu-avg-rain');
         const wuAvgRainSubEl = document.getElementById('wu-avg-rain-sub');
+        // Sunrise / Sunset (longitude + equation-of-time corrected)
+        function calcSunTimes() {
+            const LAT = 53.75, LON = -1.52;
+            const now = new Date();
+            const startOfYear = new Date(now.getFullYear(), 0, 0);
+            const doy = Math.floor((now - startOfYear) / 86400000);
+
+            const bDeg = (360 / 365) * (doy - 81);
+            const bRad = bDeg * Math.PI / 180;
+            const eotMin = 9.87 * Math.sin(2 * bRad) - 7.53 * Math.cos(bRad) - 1.5 * Math.sin(bRad);
+
+            const decl = 23.45 * Math.sin(bRad) * Math.PI / 180;
+            const latRad = LAT * Math.PI / 180;
+            const cosH = -Math.tan(latRad) * Math.tan(decl);
+            const haDeg = Math.acos(Math.max(-1, Math.min(1, cosH))) * 180 / Math.PI;
+
+            const solarNoonUTC = 12 - (LON / 15) - (eotMin / 60);
+            const sunriseUTC = solarNoonUTC - haDeg / 15;
+            const sunsetUTC = solarNoonUTC + haDeg / 15;
+
+            function utcHoursToDate(utcHours) {
+                const d = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0));
+                d.setUTCMinutes(Math.round(utcHours * 60));
+                return d;
+            }
+
+            return {
+                sunrise: utcHoursToDate(sunriseUTC),
+                sunset: utcHoursToDate(sunsetUTC),
+                solarNoon: utcHoursToDate(solarNoonUTC),
+                daylightHours: sunsetUTC - sunriseUTC,
+            };
+        }
+
+        function fmtClock(date) {
+            return date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        function fmtDuration(hoursFloat) {
+            const totalMin = Math.round(hoursFloat * 60);
+            return `${Math.floor(totalMin / 60)}h ${totalMin % 60}m`;
+        }
+
+        function updateSunTimes() {
+            const st = calcSunTimes();
+            safeSetText('sun-sunrise', fmtClock(st.sunrise));
+            safeSetText('sun-sunset', fmtClock(st.sunset));
+            safeSetText('sun-daylight', fmtDuration(st.daylightHours));
+            safeSetText('sun-noon', fmtClock(st.solarNoon));
+
+            const now = new Date();
+            let target, label;
+            if (now < st.sunrise) {
+                target = st.sunrise; label = 'Sunrise in';
+            } else if (now < st.sunset) {
+                target = st.sunset; label = 'Sunset in';
+            } else {
+                target = new Date(st.sunrise.getTime() + 24 * 60 * 60 * 1000);
+                label = 'Sunrise in';
+            }
+            const diffMin = Math.max(0, Math.round((target - now) / 60000));
+            safeSetText('sun-countdown-label', label);
+            safeSetText('sun-countdown', `${Math.floor(diffMin / 60)}h ${diffMin % 60}m`);
+        }
+
+        // Mini 24h Trend Chart
+        async function updateMiniTrendChart() {
+            if (!CONFIG.USE_BACKEND_PROXY || window.location.protocol === 'file:') return;
+            try {
+                const res = await fetchBackendJson('/api/snapshots?limit=288');
+                if (res.status !== 'ok') throw new Error('Invalid snapshots response');
+                const items = (res.items || []).slice().reverse();
+                const labels = items.map((it) => {
+                    const raw = it.captured_at || '';
+                    const d = new Date(raw.endsWith('Z') ? raw : raw + 'Z');
+                    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                });
+                const tempData = items.map((it) => Number.isFinite(it.outdoor_temp_f) ? fToC(it.outdoor_temp_f) : null);
+                const rainData = items.map((it) => Number.isFinite(it.rain_rate_inhr) ? inToMm(it.rain_rate_inhr) : null);
+
+                const ctx = document.getElementById('mini-trend-chart');
+                if (!ctx) return;
+                if (miniTrendChart) miniTrendChart.destroy();
+                miniTrendChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels,
+                        datasets: [
+                            {
+                                type: 'line', label: 'Temp (°C)', data: tempData,
+                                borderColor: '#fb7185', backgroundColor: '#fb718533',
+                                borderWidth: 2, pointRadius: 0, tension: 0.3,
+                                yAxisID: 'y', fill: true,
+                            },
+                            {
+                                type: 'bar', label: 'Rain (mm/hr)', data: rainData,
+                                backgroundColor: 'rgba(96,165,250,0.6)', yAxisID: 'y1',
+                            },
+                        ],
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        interaction: { mode: 'index', intersect: false },
+                        plugins: { legend: { labels: { color: '#cbd5e1', boxWidth: 12, font: { size: 10 } } } },
+                        scales: {
+                            x: { ticks: { color: '#93c5fd', maxTicksLimit: 6, font: { size: 10 } }, grid: { display: false } },
+                            y: { position: 'left', ticks: { color: '#fb7185', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.06)' } },
+                            y1: { position: 'right', beginAtZero: true, ticks: { color: '#60a5fa', font: { size: 10 } }, grid: { display: false } },
+                        },
+                    },
+                });
+            } catch (err) {
+                console.error('Mini trend chart error:', err);
+            }
+        }
+
         const wuStationGridEl = document.getElementById('wu-station-grid');
         const wuDirectionGridEl = document.getElementById('wu-direction-grid');
         const cefasStatusEl = document.getElementById('cefas-status');
@@ -2049,6 +2208,10 @@
             setInterval(updateCefasBuoys, 15 * 60 * 1000);
             updateNowcast();
             setInterval(updateNowcast, 10 * 60 * 1000);
+            updateSunTimes();
+            setInterval(updateSunTimes, 60 * 1000);
+            updateMiniTrendChart();
+            setInterval(updateMiniTrendChart, 10 * 60 * 1000);
         })();
 
     </script>
