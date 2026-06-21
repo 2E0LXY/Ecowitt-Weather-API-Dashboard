@@ -219,15 +219,15 @@
             }
         }
 
-        @media (min-width: 1024px) and (max-width: 1280px) {
+        @media (min-width: 1024px) {
             .wu-station-grid {
-                grid-template-columns: 1fr;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
             }
         }
 
-        @media (min-width: 1281px) {
+        @media (min-width: 1400px) {
             .wu-station-grid {
-                grid-template-columns: repeat(3, minmax(0, 1fr));
+                grid-template-columns: repeat(4, minmax(0, 1fr));
             }
         }
 
@@ -466,42 +466,6 @@
                             </div>
                         </div>
                     </section>
-
-                    <section class="glass-card p-5">
-                        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
-                            <div>
-                                <h2 class="text-lg font-semibold text-blue-200 flex items-center gap-2">
-                                    <i class="ph ph-broadcast"></i> Nearby Weather Stations <span class="text-sm font-normal text-blue-300">(10mi radius)</span>
-                                </h2>
-                                <p id="wu-status" class="text-sm text-blue-200 mt-1">Loading nearby PWS network data...</p>
-                            </div>
-                            <button id="wu-refresh-btn" class="self-start md:self-auto flex items-center gap-2 bg-sky-600 hover:bg-sky-500 text-white px-3 py-2 rounded-full text-sm font-semibold transition-colors">
-                                <i class="ph-bold ph-arrows-clockwise"></i>
-                                Refresh
-                            </button>
-                        </div>
-                        <div class="satellite-meta mb-4 text-sm">
-                            <div class="rounded-lg bg-white/5 border border-white/10 p-3">
-                                <p class="text-blue-200 text-xs">Avg Temp</p>
-                                <p id="wu-summary-temp" class="font-semibold">--</p>
-                            </div>
-                            <div class="rounded-lg bg-white/5 border border-white/10 p-3">
-                                <p class="text-blue-200 text-xs">Avg Wind</p>
-                                <p id="wu-summary-wind" class="font-semibold">--</p>
-                            </div>
-                            <div class="rounded-lg bg-white/5 border border-white/10 p-3">
-                                <p class="text-blue-200 text-xs">Max Gust</p>
-                                <p id="wu-summary-gust" class="font-semibold">--</p>
-                            </div>
-                            <div class="rounded-lg bg-white/5 border border-white/10 p-3">
-                                <p class="text-blue-200 text-xs">Stations Reporting Rain</p>
-                                <p id="wu-summary-rain" class="font-semibold">--</p>
-                            </div>
-                        </div>
-                        <div id="wu-station-grid" class="wu-station-grid">
-                            <div class="wu-station-card text-sm text-blue-200">Loading stations...</div>
-                        </div>
-                    </section>
                 </div>
 
                 <!-- Right Column (Sensors) -->
@@ -659,6 +623,65 @@
                 </div>
 
             </main>
+
+            <section class="glass-card p-5 mb-6 live-only">
+                <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+                    <div>
+                        <h2 class="text-lg font-semibold text-blue-200 flex items-center gap-2">
+                            <i class="ph ph-broadcast"></i> Nearby Weather Stations <span class="text-sm font-normal text-blue-300">(100mi radius, 10mi+ spacing)</span>
+                        </h2>
+                        <p id="wu-status" class="text-sm text-blue-200 mt-1">Loading nearby PWS network data...</p>
+                    </div>
+                    <button id="wu-refresh-btn" class="self-start md:self-auto flex items-center gap-2 bg-sky-600 hover:bg-sky-500 text-white px-3 py-2 rounded-full text-sm font-semibold transition-colors">
+                        <i class="ph-bold ph-arrows-clockwise"></i>
+                        Refresh
+                    </button>
+                </div>
+
+                <h3 class="text-sm font-semibold text-blue-200 uppercase tracking-wider mb-3">Regional Averages</h3>
+                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6 mb-6 pb-6 border-b border-white/10">
+                    <div>
+                        <p class="text-sm text-blue-200 mb-1">Avg Temp</p>
+                        <p class="text-2xl font-bold" id="wu-avg-temp">--</p>
+                        <p class="text-xs text-blue-300" id="wu-avg-temp-sub">--</p>
+                        <div id="scale-wu-temp" class="flex gap-0.5 mt-2 h-1.5 w-full"></div>
+                    </div>
+                    <div>
+                        <p class="text-sm text-blue-200 mb-1">Avg Humidity</p>
+                        <p class="text-2xl font-bold" id="wu-avg-humidity">--</p>
+                        <p class="text-xs text-blue-300">&nbsp;</p>
+                        <div id="scale-wu-humidity" class="flex gap-0.5 mt-2 h-1.5 w-full"></div>
+                    </div>
+                    <div>
+                        <p class="text-sm text-blue-200 mb-1">Avg Wind</p>
+                        <p class="text-2xl font-bold" id="wu-avg-wind">--</p>
+                        <p class="text-xs text-blue-300" id="wu-avg-wind-sub">--</p>
+                        <div id="scale-wu-wind" class="flex gap-0.5 mt-2 h-1.5 w-full"></div>
+                    </div>
+                    <div>
+                        <p class="text-sm text-blue-200 mb-1">Avg Gust</p>
+                        <p class="text-2xl font-bold" id="wu-avg-gust">--</p>
+                        <p class="text-xs text-blue-300" id="wu-avg-gust-sub">--</p>
+                        <div id="scale-wu-gust" class="flex gap-0.5 mt-2 h-1.5 w-full"></div>
+                    </div>
+                    <div>
+                        <p class="text-sm text-blue-200 mb-1">Avg Pressure</p>
+                        <p class="text-2xl font-bold" id="wu-avg-pressure">--</p>
+                        <p class="text-xs text-blue-300" id="wu-avg-pressure-sub">--</p>
+                        <div id="scale-wu-pressure" class="flex gap-0.5 mt-2 h-1.5 w-full"></div>
+                    </div>
+                    <div>
+                        <p class="text-sm text-blue-200 mb-1">Avg Rain Today</p>
+                        <p class="text-2xl font-bold" id="wu-avg-rain">--</p>
+                        <p class="text-xs text-blue-300" id="wu-avg-rain-sub">--</p>
+                        <div id="scale-wu-rain" class="flex gap-0.5 mt-2 h-1.5 w-full"></div>
+                    </div>
+                </div>
+
+                <div id="wu-station-grid" class="wu-station-grid">
+                    <div class="wu-station-card text-sm text-blue-200">Loading stations...</div>
+                </div>
+            </section>
         </div>
 
         <!-- Historic View -->
@@ -808,10 +831,17 @@
         const satelliteRefreshBtn = document.getElementById('satellite-refresh-btn');
         const wuStatusEl = document.getElementById('wu-status');
         const wuRefreshBtn = document.getElementById('wu-refresh-btn');
-        const wuSummaryTempEl = document.getElementById('wu-summary-temp');
-        const wuSummaryWindEl = document.getElementById('wu-summary-wind');
-        const wuSummaryGustEl = document.getElementById('wu-summary-gust');
-        const wuSummaryRainEl = document.getElementById('wu-summary-rain');
+        const wuAvgTempEl = document.getElementById('wu-avg-temp');
+        const wuAvgTempSubEl = document.getElementById('wu-avg-temp-sub');
+        const wuAvgHumidityEl = document.getElementById('wu-avg-humidity');
+        const wuAvgWindEl = document.getElementById('wu-avg-wind');
+        const wuAvgWindSubEl = document.getElementById('wu-avg-wind-sub');
+        const wuAvgGustEl = document.getElementById('wu-avg-gust');
+        const wuAvgGustSubEl = document.getElementById('wu-avg-gust-sub');
+        const wuAvgPressureEl = document.getElementById('wu-avg-pressure');
+        const wuAvgPressureSubEl = document.getElementById('wu-avg-pressure-sub');
+        const wuAvgRainEl = document.getElementById('wu-avg-rain');
+        const wuAvgRainSubEl = document.getElementById('wu-avg-rain-sub');
         const wuStationGridEl = document.getElementById('wu-station-grid');
         const liveOnlySections = document.querySelectorAll('.live-only');
         
@@ -1511,19 +1541,35 @@
                 const summary = res.regional_summary || {};
                 const stations = Array.isArray(res.stations) ? res.stations : [];
 
-                if (wuSummaryTempEl) {
-                    wuSummaryTempEl.textContent = Number.isFinite(summary.temp_c_avg) ? `${summary.temp_c_avg.toFixed(1)}°C (${cToF(summary.temp_c_avg).toFixed(1)}°F)` : '--';
-                }
-                if (wuSummaryWindEl) {
-                    wuSummaryWindEl.textContent = Number.isFinite(summary.wind_speed_kmh_avg) ? `${summary.wind_speed_kmh_avg.toFixed(1)} km/h (${(summary.wind_speed_kmh_avg/1.60934).toFixed(1)} mph)` : '--';
-                }
-                if (wuSummaryGustEl) {
-                    wuSummaryGustEl.textContent = Number.isFinite(summary.wind_gust_kmh_max) ? `${summary.wind_gust_kmh_max.toFixed(1)} km/h (${(summary.wind_gust_kmh_max/1.60934).toFixed(1)} mph)` : '--';
-                }
-                if (wuSummaryRainEl) {
-                    const n = summary.stations_reporting_rain;
-                    wuSummaryRainEl.textContent = Number.isFinite(n) ? `${n} of ${res.station_count || stations.length}` : '--';
-                }
+                const wuAvgTempC = summary.temp_c_avg;
+                const wuAvgHumidity = summary.humidity_pct_avg;
+                const wuAvgWindKmh = summary.wind_speed_kmh_avg;
+                const wuAvgGustKmh = summary.wind_gust_kmh_avg;
+                const wuAvgPressureHpa = summary.pressure_hpa_avg;
+                const wuAvgRainMm = summary.precip_total_mm_avg;
+
+                if (wuAvgTempEl) wuAvgTempEl.textContent = Number.isFinite(wuAvgTempC) ? `${wuAvgTempC.toFixed(1)}°C` : '--';
+                if (wuAvgTempSubEl) wuAvgTempSubEl.textContent = Number.isFinite(wuAvgTempC) ? `(${cToF(wuAvgTempC).toFixed(1)}°F)` : '';
+                renderScale('scale-wu-temp', Number.isFinite(wuAvgTempC) ? cToF(wuAvgTempC) : NaN, 10, 100, SCALES.temp);
+
+                if (wuAvgHumidityEl) wuAvgHumidityEl.innerHTML = Number.isFinite(wuAvgHumidity) ? `${wuAvgHumidity.toFixed(0)}<span class="text-sm text-blue-300">%</span>` : '--';
+                renderScale('scale-wu-humidity', wuAvgHumidity, 0, 100, SCALES.hum);
+
+                if (wuAvgWindEl) wuAvgWindEl.textContent = Number.isFinite(wuAvgWindKmh) ? `${wuAvgWindKmh.toFixed(1)} km/h` : '--';
+                if (wuAvgWindSubEl) wuAvgWindSubEl.textContent = Number.isFinite(wuAvgWindKmh) ? `(${(wuAvgWindKmh / 1.60934).toFixed(1)} mph)` : '';
+                renderScale('scale-wu-wind', Number.isFinite(wuAvgWindKmh) ? wuAvgWindKmh / 1.60934 : NaN, 0, 35, SCALES.wind);
+
+                if (wuAvgGustEl) wuAvgGustEl.textContent = Number.isFinite(wuAvgGustKmh) ? `${wuAvgGustKmh.toFixed(1)} km/h` : '--';
+                if (wuAvgGustSubEl) wuAvgGustSubEl.textContent = Number.isFinite(wuAvgGustKmh) ? `(${(wuAvgGustKmh / 1.60934).toFixed(1)} mph)` : '';
+                renderScale('scale-wu-gust', Number.isFinite(wuAvgGustKmh) ? wuAvgGustKmh / 1.60934 : NaN, 0, 35, SCALES.wind);
+
+                if (wuAvgPressureEl) wuAvgPressureEl.textContent = Number.isFinite(wuAvgPressureHpa) ? `${wuAvgPressureHpa.toFixed(1)} hPa` : '--';
+                if (wuAvgPressureSubEl) wuAvgPressureSubEl.textContent = Number.isFinite(wuAvgPressureHpa) ? `(${(wuAvgPressureHpa / 33.8639).toFixed(2)} inHg)` : '';
+                renderScale('scale-wu-pressure', Number.isFinite(wuAvgPressureHpa) ? wuAvgPressureHpa / 33.8639 : NaN, 29.0, 30.5, SCALES.pressure);
+
+                if (wuAvgRainEl) wuAvgRainEl.textContent = Number.isFinite(wuAvgRainMm) ? `${wuAvgRainMm.toFixed(1)} mm` : '--';
+                if (wuAvgRainSubEl) wuAvgRainSubEl.textContent = Number.isFinite(wuAvgRainMm) ? `(${(wuAvgRainMm / 25.4).toFixed(2)} in)` : '';
+                renderScale('scale-wu-rain', Number.isFinite(wuAvgRainMm) ? wuAvgRainMm / 25.4 : NaN, 0, 2.0, SCALES.rain);
 
                 if (wuStationGridEl) {
                     if (!stations.length) {

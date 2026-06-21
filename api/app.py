@@ -50,9 +50,10 @@ WU_API_KEY = os.getenv("WU_API_KEY", "")
 WU_API_BASE = "https://api.weather.com"
 WU_CENTER_LAT = float(os.getenv("WU_CENTER_LAT", "53.75"))
 WU_CENTER_LON = float(os.getenv("WU_CENTER_LON", "-1.52"))
-WU_RADIUS_MILES = float(os.getenv("WU_RADIUS_MILES", "10"))
-WU_STATION_LIMIT = max(1, min(30, int(os.getenv("WU_STATION_LIMIT", "20"))))
-WU_CACHE_TTL_SECONDS = int(os.getenv("WU_CACHE_TTL_SECONDS", "1800"))
+WU_RADIUS_MILES = float(os.getenv("WU_RADIUS_MILES", "100"))
+WU_MIN_STATION_SPACING_MILES = float(os.getenv("WU_MIN_STATION_SPACING_MILES", "10"))
+WU_STATION_LIMIT = max(1, min(40, int(os.getenv("WU_STATION_LIMIT", "24"))))
+WU_CACHE_TTL_SECONDS = int(os.getenv("WU_CACHE_TTL_SECONDS", "3600"))
 
 STATIC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "static"))
 
@@ -187,11 +188,24 @@ async def fetch_wu_nearby_stations(force=False):
         raise HTTPException(status_code=500, detail="Missing WU_API_KEY")
 
     radius_km = WU_RADIUS_MILES * 1.60934
-    probe_radius_km = radius_km * 0.8
-    bearings = [0, 45, 90, 135, 180, 225, 270, 315]
-    probe_points = [(WU_CENTER_LAT, WU_CENTER_LON)] + [
-        _destination_point(WU_CENTER_LAT, WU_CENTER_LON, b, probe_radius_km) for b in bearings
+    min_spacing_km = WU_MIN_STATION_SPACING_MILES * 1.60934
+
+    # Multi-ring radial sweep: each near() lookup only returns the 10 closest
+    # stations to that point, so a single ring can't cover a 100mi disc -
+    # use several concentric rings with more points per ring as radius grows.
+    rings = [
+        (0.20, 6),
+        (0.45, 8),
+        (0.70, 10),
+        (0.95, 14),
     ]
+    probe_points = [(WU_CENTER_LAT, WU_CENTER_LON)]
+    for radius_frac, point_count in rings:
+        ring_radius_km = radius_km * radius_frac
+        bearing_step = 360.0 / point_count
+        for i in range(point_count):
+            bearing = i * bearing_step
+            probe_points.append(_destination_point(WU_CENTER_LAT, WU_CENTER_LON, bearing, ring_radius_km))
 
     async with httpx.AsyncClient(timeout=20.0) as client:
         probe_results = await asyncio.gather(
@@ -214,7 +228,23 @@ async def fetch_wu_nearby_stations(force=False):
                 scored.append((dist_km, info))
         scored.sort(key=lambda x: x[0])
         stations_in_radius = len(scored)
-        scored = scored[:WU_STATION_LIMIT]
+
+        # Enforce minimum spacing between selected stations so the result set
+        # is geographically spread across the full radius rather than
+        # clustering around the densest spot (closest candidates win ties).
+        spaced = []
+        for dist_km, info in scored:
+            try:
+                lat, lon = float(info["lat"]), float(info["lon"])
+            except (TypeError, ValueError):
+                continue
+            too_close = any(
+                _haversine_km(lat, lon, float(sel["lat"]), float(sel["lon"])) < min_spacing_km
+                for _, sel in spaced
+            )
+            if not too_close:
+                spaced.append((dist_km, info))
+        scored = spaced[:WU_STATION_LIMIT]
 
         sem = asyncio.Semaphore(5)
 
@@ -272,6 +302,7 @@ async def fetch_wu_nearby_stations(force=False):
         "source": "Weather Underground PWS Network",
         "center": {"lat": WU_CENTER_LAT, "lon": WU_CENTER_LON},
         "radius_miles": WU_RADIUS_MILES,
+        "min_spacing_miles": WU_MIN_STATION_SPACING_MILES,
         "cached": False,
         "cache_age_seconds": 0,
         "candidates_found": len(candidates),
@@ -282,8 +313,10 @@ async def fetch_wu_nearby_stations(force=False):
             "temp_c_avg": avg("temp_c"),
             "humidity_pct_avg": avg("humidity_pct"),
             "wind_speed_kmh_avg": avg("wind_speed_kmh"),
+            "wind_gust_kmh_avg": avg("wind_gust_kmh"),
             "wind_gust_kmh_max": max([s["wind_gust_kmh"] for s in stations if isinstance(s.get("wind_gust_kmh"), (int, float))], default=None),
             "pressure_hpa_avg": avg("pressure_hpa"),
+            "precip_total_mm_avg": avg("precip_total_mm"),
             "precip_total_mm_max": max([s["precip_total_mm"] for s in stations if isinstance(s.get("precip_total_mm"), (int, float))], default=None),
             "stations_reporting_rain": sum(1 for s in stations if isinstance(s.get("precip_rate_mmhr"), (int, float)) and s["precip_rate_mmhr"] > 0),
         },
