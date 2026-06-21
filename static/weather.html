@@ -1018,7 +1018,8 @@
                 const items = (res.items || []).slice().reverse();
                 const labels = items.map((it) => {
                     const raw = it.captured_at || '';
-                    const d = new Date(raw.endsWith('Z') ? raw : raw + 'Z');
+                    const hasTz = /[Zz]$/.test(raw) || /[+-]\d{2}:\d{2}$/.test(raw);
+                    const d = new Date(hasTz ? raw : raw + 'Z');
                     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                 });
                 const tempData = items.map((it) => Number.isFinite(it.outdoor_temp_f) ? fToC(it.outdoor_temp_f) : null);
