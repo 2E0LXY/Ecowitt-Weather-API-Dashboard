@@ -21,21 +21,21 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
 
       - name: Set up Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 21
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       - name: Install dependencies
         run: npm install
@@ -86,7 +86,7 @@ jobs:
         run: |
           APK_PATH="android/app/build/outputs/apk/debug/app-debug.apk"
           RELEASE_TAG="android-debug-latest"
-          ASSET_NAME="ecowitt-weather-debug.apk"
+          ASSET_NAME="app-debug.apk"
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" "$APK_PATH#$ASSET_NAME" --clobber
           else
