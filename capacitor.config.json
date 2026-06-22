@@ -1,0 +1,13 @@
+{
+  "appId": "uk.e2e0lxy.ecowittdashboard",
+  "appName": "Ecowitt Weather",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchAutoHide": true
+    }
+  }
+}

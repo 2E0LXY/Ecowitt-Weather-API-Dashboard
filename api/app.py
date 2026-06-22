@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import hashlib
 import json
 import math
 import os
@@ -31,6 +32,7 @@ APPLICATION_KEY = os.getenv("APPLICATION_KEY", "")
 API_KEY = os.getenv("API_KEY", "")
 MAC_ADDRESS = os.getenv("MAC_ADDRESS", "")
 ECOWITT_URL = os.getenv("ECOWITT_URL", "https://api.ecowitt.net/api/v3/device/real_time")
+ECOWITT_HISTORY_URL = os.getenv("ECOWITT_HISTORY_URL", "https://api.ecowitt.net/api/v3/device/history")
 DB_PATH = os.getenv("WEATHER_DB_PATH", os.path.join(os.path.dirname(__file__), "..", "data", "weather_data.db"))
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
@@ -69,8 +71,8 @@ AI_RETRY_COOLDOWN_SECONDS = 600
 _ai_last_failure_ts = 0.0
 SATELLITE_CACHE_TTL_SECONDS = 300
 _satellite_cache = {"ts": 0.0, "payload": None}
-_wu_cache = {"ts": 0.0, "payload": None}
-_cefas_cache = {"ts": 0.0, "payload": None}
+_wu_cache = {}
+_cefas_cache = {}
 
 
 def db_conn():
@@ -184,12 +186,49 @@ def _compass_octant(bearing_deg):
     return _OCTANTS[idx]
 
 
-async def _wu_near_search(client, lat, lon):
+def _clean_optional(value):
+    if value is None:
+        return None
+    value = str(value).strip()
+    return value or None
+
+
+def _secret_fingerprint(value):
+    value = _clean_optional(value)
+    if not value:
+        return "server"
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
+
+
+def _resolve_center(lat=None, lon=None):
+    center_lat = WU_CENTER_LAT if lat is None else float(lat)
+    center_lon = WU_CENTER_LON if lon is None else float(lon)
+    if center_lat < -90 or center_lat > 90:
+        raise HTTPException(status_code=400, detail="lat must be between -90 and 90")
+    if center_lon < -180 or center_lon > 180:
+        raise HTTPException(status_code=400, detail="lon must be between -180 and 180")
+    return center_lat, center_lon
+
+
+def _resolve_ecowitt_credentials(application_key=None, api_key=None, mac=None):
+    app_key = _clean_optional(application_key) or APPLICATION_KEY
+    resolved_api_key = _clean_optional(api_key) or API_KEY
+    resolved_mac = _clean_optional(mac) or MAC_ADDRESS
+    if not all([app_key, resolved_api_key, resolved_mac]):
+        raise HTTPException(status_code=400, detail="Missing application_key, api_key or mac")
+    return app_key, resolved_api_key, normalized_mac(resolved_mac)
+
+
+def _is_custom_ecowitt_profile(application_key=None, api_key=None, mac=None):
+    return any(_clean_optional(v) for v in (application_key, api_key, mac))
+
+
+async def _wu_near_search(client, lat, lon, api_key):
     """Single nearest-10 lookup; returns [(stationId, name, lat, lon), ...]."""
     try:
         resp = await client.get(
             f"{WU_API_BASE}/v3/location/near",
-            params={"geocode": f"{lat},{lon}", "product": "pws", "format": "json", "apiKey": WU_API_KEY},
+            params={"geocode": f"{lat},{lon}", "product": "pws", "format": "json", "apiKey": api_key},
         )
         resp.raise_for_status()
         loc = resp.json().get("location", {})
@@ -202,24 +241,37 @@ async def _wu_near_search(client, lat, lon):
         return []
 
 
-async def fetch_wu_nearby_stations(force=False):
-    """Fetch PWS stations within WU_RADIUS_MILES of the configured centre point.
+async def fetch_wu_nearby_stations(force=False, api_key=None, lat=None, lon=None):
+    """Fetch PWS stations within WU_RADIUS_MILES of the selected centre point.
 
     The WU v3/location/near API hard-caps each lookup at the 10 nearest stations
     to the queried geocode, so to cover a wider radius we issue several lookups
     from points arranged in a ring around the centre, merge + dedupe the results,
     then keep only stations whose true (haversine) distance from the centre is
-    within the configured radius.
+    within the configured radius. User-supplied API keys and GPS centres are
+    cached separately so one user's station lookup is never reused for another.
     """
     now = time.time()
-    if not force and _wu_cache["payload"] and (now - _wu_cache["ts"] < WU_CACHE_TTL_SECONDS):
-        cached = deepcopy(_wu_cache["payload"])
-        cached["cached"] = True
-        cached["cache_age_seconds"] = int(now - _wu_cache["ts"])
-        return cached
+    resolved_api_key = _clean_optional(api_key) or WU_API_KEY
+    if not resolved_api_key:
+        raise HTTPException(status_code=400, detail="Missing Weather Underground API key")
 
-    if not WU_API_KEY:
-        raise HTTPException(status_code=500, detail="Missing WU_API_KEY")
+    center_lat, center_lon = _resolve_center(lat, lon)
+    cache_key = (
+        _secret_fingerprint(resolved_api_key),
+        round(center_lat, 4),
+        round(center_lon, 4),
+        WU_RADIUS_MILES,
+        WU_MIN_STATION_SPACING_MILES,
+        WU_STATION_LIMIT,
+        WU_LOCAL_RADIUS_MILES,
+    )
+    cache_entry = _wu_cache.get(cache_key)
+    if not force and cache_entry and cache_entry["payload"] and (now - cache_entry["ts"] < WU_CACHE_TTL_SECONDS):
+        cached = deepcopy(cache_entry["payload"])
+        cached["cached"] = True
+        cached["cache_age_seconds"] = int(now - cache_entry["ts"])
+        return cached
 
     radius_km = WU_RADIUS_MILES * 1.60934
     min_spacing_km = WU_MIN_STATION_SPACING_MILES * 1.60934
@@ -233,17 +285,17 @@ async def fetch_wu_nearby_stations(force=False):
         (0.70, 10),
         (0.95, 14),
     ]
-    probe_points = [(WU_CENTER_LAT, WU_CENTER_LON)]
+    probe_points = [(center_lat, center_lon)]
     for radius_frac, point_count in rings:
         ring_radius_km = radius_km * radius_frac
         bearing_step = 360.0 / point_count
         for i in range(point_count):
             bearing = i * bearing_step
-            probe_points.append(_destination_point(WU_CENTER_LAT, WU_CENTER_LON, bearing, ring_radius_km))
+            probe_points.append(_destination_point(center_lat, center_lon, bearing, ring_radius_km))
 
     async with httpx.AsyncClient(timeout=20.0) as client:
         probe_results = await asyncio.gather(
-            *[_wu_near_search(client, plat, plon) for plat, plon in probe_points]
+            *[_wu_near_search(client, plat, plon, resolved_api_key) for plat, plon in probe_points]
         )
 
         candidates = {}
@@ -255,7 +307,7 @@ async def fetch_wu_nearby_stations(force=False):
         scored = []
         for sid, info in candidates.items():
             try:
-                dist_km = _haversine_km(WU_CENTER_LAT, WU_CENTER_LON, float(info["lat"]), float(info["lon"]))
+                dist_km = _haversine_km(center_lat, center_lon, float(info["lat"]), float(info["lon"]))
             except (TypeError, ValueError):
                 continue
             if dist_km <= radius_km:
@@ -288,7 +340,7 @@ async def fetch_wu_nearby_stations(force=False):
                 try:
                     obs_resp = await client.get(
                         f"{WU_API_BASE}/v2/pws/observations/current",
-                        params={"stationId": sid, "format": "json", "units": "m", "apiKey": WU_API_KEY},
+                        params={"stationId": sid, "format": "json", "units": "m", "apiKey": resolved_api_key},
                     )
                     if obs_resp.status_code != 200:
                         return None
@@ -300,7 +352,7 @@ async def fetch_wu_nearby_stations(force=False):
                     obs_lat = obs.get("lat", info["lat"])
                     obs_lon = obs.get("lon", info["lon"])
                     try:
-                        bearing = _bearing_deg(WU_CENTER_LAT, WU_CENTER_LON, float(obs_lat), float(obs_lon))
+                        bearing = _bearing_deg(center_lat, center_lon, float(obs_lat), float(obs_lon))
                         direction = _compass_point(bearing)
                         octant = _compass_octant(bearing)
                     except (TypeError, ValueError):
@@ -378,7 +430,7 @@ async def fetch_wu_nearby_stations(force=False):
     payload = {
         "status": "ok",
         "source": "Weather Underground PWS Network",
-        "center": {"lat": WU_CENTER_LAT, "lon": WU_CENTER_LON},
+        "center": {"lat": center_lat, "lon": center_lon},
         "radius_miles": WU_RADIUS_MILES,
         "local_radius_miles": WU_LOCAL_RADIUS_MILES,
         "min_spacing_miles": WU_MIN_STATION_SPACING_MILES,
@@ -393,8 +445,7 @@ async def fetch_wu_nearby_stations(force=False):
         "regional_summary": overall_summary,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
-    _wu_cache["payload"] = deepcopy(payload)
-    _wu_cache["ts"] = time.time()
+    _wu_cache[cache_key] = {"payload": deepcopy(payload), "ts": time.time()}
     return payload
 
 
@@ -407,19 +458,22 @@ def _safe_float(value):
         return None
 
 
-async def fetch_cefas_buoys(force=False):
+async def fetch_cefas_buoys(force=False, lat=None, lon=None):
     """Fetch live Cefas WaveNet marine buoy data within CEFAS_RADIUS_MILES of
-    the configured centre point.
+    the selected centre point.
 
     Public, unauthenticated GeoJSON endpoint maintained by Cefas (Centre for
     Environment, Fisheries and Aquaculture Science). Data is licensed under
     the Open Government Licence - acknowledgement required, no API key needed.
     """
     now = time.time()
-    if not force and _cefas_cache["payload"] and (now - _cefas_cache["ts"] < CEFAS_CACHE_TTL_SECONDS):
-        cached = deepcopy(_cefas_cache["payload"])
+    center_lat, center_lon = _resolve_center(lat, lon)
+    cache_key = (round(center_lat, 4), round(center_lon, 4), CEFAS_RADIUS_MILES, CEFAS_BUOY_LIMIT)
+    cache_entry = _cefas_cache.get(cache_key)
+    if not force and cache_entry and cache_entry["payload"] and (now - cache_entry["ts"] < CEFAS_CACHE_TTL_SECONDS):
+        cached = deepcopy(cache_entry["payload"])
         cached["cached"] = True
-        cached["cache_age_seconds"] = int(now - _cefas_cache["ts"])
+        cached["cache_age_seconds"] = int(now - cache_entry["ts"])
         return cached
 
     try:
@@ -440,12 +494,30 @@ async def fetch_cefas_buoys(force=False):
             lon, lat = feature["geometry"]["coordinates"]
         except (KeyError, ValueError, TypeError):
             continue
-        dist_km = _haversine_km(WU_CENTER_LAT, WU_CENTER_LON, lat, lon)
+        dist_km = _haversine_km(center_lat, center_lon, lat, lon)
         dist_mi = dist_km / 1.60934
         if dist_mi > CEFAS_RADIUS_MILES:
             continue
         scored.append((dist_mi, lat, lon, feature))
     scored.sort(key=lambda x: x[0])
+    if not scored:
+        payload = {
+            "status": "not_near_marine_buoys",
+            "source": "Cefas WaveNet (Channel Coastal Observatory / Cefas)",
+            "license": "Open Government Licence - https://wavenet-api.cefas.co.uk/api/Licence/1/Download",
+            "message": f"Not near sea buoys within {CEFAS_RADIUS_MILES:.0f} miles.",
+            "centre": {"lat": center_lat, "lon": center_lon},
+            "radius_miles": CEFAS_RADIUS_MILES,
+            "cached": False,
+            "cache_age_seconds": 0,
+            "buoy_count": 0,
+            "buoys": [],
+            "regional_summary": {},
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        _cefas_cache[cache_key] = {"payload": deepcopy(payload), "ts": time.time()}
+        return payload
+
     scored = scored[:CEFAS_BUOY_LIMIT]
 
     buoys = []
@@ -459,7 +531,7 @@ async def fetch_cefas_buoys(force=False):
             return _safe_float(values[0]) if values else None
 
         try:
-            bearing = _bearing_deg(WU_CENTER_LAT, WU_CENTER_LON, lat, lon)
+            bearing = _bearing_deg(center_lat, center_lon, lat, lon)
             direction = _compass_point(bearing)
         except (TypeError, ValueError):
             direction = None
@@ -490,7 +562,7 @@ async def fetch_cefas_buoys(force=False):
         "status": "ok",
         "source": "Cefas WaveNet (Channel Coastal Observatory / Cefas)",
         "license": "Open Government Licence - https://wavenet-api.cefas.co.uk/api/Licence/1/Download",
-        "centre": {"lat": WU_CENTER_LAT, "lon": WU_CENTER_LON},
+        "centre": {"lat": center_lat, "lon": center_lon},
         "radius_miles": CEFAS_RADIUS_MILES,
         "cached": False,
         "cache_age_seconds": 0,
@@ -505,8 +577,7 @@ async def fetch_cefas_buoys(force=False):
         },
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
-    _cefas_cache["payload"] = deepcopy(payload)
-    _cefas_cache["ts"] = time.time()
+    _cefas_cache[cache_key] = {"payload": deepcopy(payload), "ts": time.time()}
     return payload
 
 
@@ -573,7 +644,7 @@ async def compute_pressure_tendency():
 NOWCAST_ASSUMED_SPEED_MPH = float(os.getenv("NOWCAST_ASSUMED_SPEED_MPH", "25"))
 
 
-async def compute_nowcast():
+async def compute_nowcast(application_key=None, api_key=None, mac=None, wu_api_key=None, lat=None, lon=None):
     """Rule-based short-term (1-3h) nowcast built entirely in-house from data
     already being collected: own station's current wind direction (to find
     the upwind compass sector), our own barometric pressure tendency, and
@@ -582,7 +653,7 @@ async def compute_nowcast():
     this is a deliberately self-contained, deterministic prediction layer.
     """
     try:
-        current_payload = await fetch_current_from_ecowitt()
+        current_payload = await fetch_current_from_ecowitt(application_key=application_key, api_key=api_key, mac=mac)
         current_data = current_payload.get("data", {})
         wind_dir_raw = current_data.get("wind", {}).get("wind_direction", {}).get("value")
         own_wind_dir = to_float(wind_dir_raw)
@@ -597,7 +668,7 @@ async def compute_nowcast():
 
     upwind_info = None
     try:
-        wu_data = await fetch_wu_nearby_stations()
+        wu_data = await fetch_wu_nearby_stations(api_key=wu_api_key, lat=lat, lon=lon)
         directional = wu_data.get("directional_summary", {})
         if upwind_octant and upwind_octant in directional:
             sector = directional[upwind_octant]
@@ -735,13 +806,12 @@ def local_fallback_forecast(stats_24, trend_24):
     }
 
 
-async def fetch_current_from_ecowitt():
-    if not all([APPLICATION_KEY, API_KEY, MAC_ADDRESS]):
-        raise HTTPException(status_code=500, detail="Missing APPLICATION_KEY, API_KEY or MAC_ADDRESS")
+async def fetch_current_from_ecowitt(application_key=None, api_key=None, mac=None):
+    application_key, api_key, mac = _resolve_ecowitt_credentials(application_key, api_key, mac)
     params = {
-        "application_key": APPLICATION_KEY,
-        "api_key": API_KEY,
-        "mac": normalized_mac(MAC_ADDRESS),
+        "application_key": application_key,
+        "api_key": api_key,
+        "mac": mac,
         "call_back": "all",
     }
     try:
@@ -757,6 +827,41 @@ async def fetch_current_from_ecowitt():
         raise HTTPException(status_code=502, detail="Ecowitt returned invalid JSON") from exc
     if payload.get("code") != 0:
         raise HTTPException(status_code=502, detail=f"Ecowitt API error: {payload.get('msg', 'Unknown')}")
+    return payload
+
+
+async def fetch_history_from_ecowitt(
+    start_date,
+    end_date,
+    cycle_type="auto",
+    call_back="all",
+    application_key=None,
+    api_key=None,
+    mac=None,
+):
+    application_key, api_key, mac = _resolve_ecowitt_credentials(application_key, api_key, mac)
+    params = {
+        "application_key": application_key,
+        "api_key": api_key,
+        "mac": mac,
+        "start_date": start_date,
+        "end_date": end_date,
+        "cycle_type": cycle_type,
+        "call_back": call_back,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+            resp = await client.get(ECOWITT_HISTORY_URL, params=params)
+            resp.raise_for_status()
+            payload = resp.json()
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(status_code=502, detail=f"Ecowitt history HTTP error {exc.response.status_code}") from exc
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail=f"Ecowitt history request error: {exc}") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail="Ecowitt history returned invalid JSON") from exc
+    if payload.get("code") != 0:
+        raise HTTPException(status_code=502, detail=f"Ecowitt history API error: {payload.get('msg', 'Unknown')}")
     return payload
 
 
@@ -1058,28 +1163,79 @@ async def api_satellite_image(url: str = Query(...)):
 
 
 @app.get("/api/wu/nearby")
-async def api_wu_nearby(force: bool = False):
-    return await fetch_wu_nearby_stations(force=force)
+async def api_wu_nearby(
+    force: bool = False,
+    wu_api_key: str | None = Query(None),
+    lat: float | None = Query(None),
+    lon: float | None = Query(None),
+):
+    return await fetch_wu_nearby_stations(force=force, api_key=wu_api_key, lat=lat, lon=lon)
 
 
 @app.get("/api/cefas/buoys")
-async def api_cefas_buoys(force: bool = False):
-    return await fetch_cefas_buoys(force=force)
+async def api_cefas_buoys(
+    force: bool = False,
+    lat: float | None = Query(None),
+    lon: float | None = Query(None),
+):
+    return await fetch_cefas_buoys(force=force, lat=lat, lon=lon)
 
 
 @app.get("/api/nowcast")
-async def api_nowcast():
-    return await compute_nowcast()
+async def api_nowcast(
+    application_key: str | None = Query(None),
+    api_key: str | None = Query(None),
+    mac: str | None = Query(None),
+    wu_api_key: str | None = Query(None),
+    lat: float | None = Query(None),
+    lon: float | None = Query(None),
+):
+    return await compute_nowcast(
+        application_key=application_key,
+        api_key=api_key,
+        mac=mac,
+        wu_api_key=wu_api_key,
+        lat=lat,
+        lon=lon,
+    )
 
 
 @app.get("/api/current")
-async def api_current(save: bool = False):
-    payload = await fetch_current_from_ecowitt()
-    if save:
+async def api_current(
+    save: bool = False,
+    application_key: str | None = Query(None),
+    api_key: str | None = Query(None),
+    mac: str | None = Query(None),
+):
+    payload = await fetch_current_from_ecowitt(application_key=application_key, api_key=api_key, mac=mac)
+    if save and not _is_custom_ecowitt_profile(application_key, api_key, mac):
         snapshot = extract_snapshot(payload)
         captured_at = save_snapshot(snapshot)
         payload["_snapshot"] = {"captured_at": captured_at}
+    elif save:
+        payload["_snapshot"] = {"skipped": True, "reason": "custom user station data is not stored in the shared server database"}
     return payload
+
+
+@app.get("/api/history")
+async def api_history(
+    start_date: str = Query(...),
+    end_date: str = Query(...),
+    cycle_type: str = Query("auto"),
+    call_back: str = Query("all"),
+    application_key: str | None = Query(None),
+    api_key: str | None = Query(None),
+    mac: str | None = Query(None),
+):
+    return await fetch_history_from_ecowitt(
+        start_date=start_date,
+        end_date=end_date,
+        cycle_type=cycle_type,
+        call_back=call_back,
+        application_key=application_key,
+        api_key=api_key,
+        mac=mac,
+    )
 
 
 @app.post("/api/snapshot")

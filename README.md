@@ -2,9 +2,12 @@
 
 Live weather dashboard for Ecowitt stations with:
 - live current conditions
+- user-entered Ecowitt and Weather Underground API details
+- GPS-based local Weather Underground PWS and Cefas WaveNet buoy lookups
 - local SQLite history storage
 - trend/stat summaries from saved data
 - optional Gemini AI 24-hour forecast narrative
+- GitHub Actions Android APK build through Capacitor
 
 ## What this does
 
@@ -14,12 +17,16 @@ This project has two parts:
 
 The backend can auto-save periodic snapshots (recommended on VPS via systemd timer), so your trends and AI summary survive browser refreshes and reconnects.
 
+The dashboard also has a **Setup** panel. Users can enter their Ecowitt Application Key, Ecowitt API Key, station MAC address, and Weather Underground API key. The browser stores those values in localStorage and sends them to the FastAPI backend for that user's requests. Custom user station snapshots are not saved into the shared SQLite database.
+
 ## Project structure
 
 - `api/app.py` main backend app
 - `api/requirements.txt` Python dependencies
 - `api/.env.example` environment template
 - `static/weather.html` dashboard UI
+- `package.json` Capacitor Android build scripts
+- `.github/workflows/android-apk.yml` GitHub Actions APK workflow
 - `data/weather_data.db` SQLite database (created automatically)
 - `index.html` redirect to `/weather-dashboard/static/weather.html`
 
@@ -104,6 +111,8 @@ Open:
 - `GET /health` health check
 - `GET /api/current` fetch latest Ecowitt payload
 - `GET /api/current?save=1` fetch latest + save snapshot
+- `GET /api/current?application_key=...&api_key=...&mac=...` fetch a user station without saving to the shared DB
+- `GET /api/history?application_key=...&api_key=...&mac=...&start_date=...&end_date=...` fetch user station history
 - `POST /api/snapshot` save one snapshot
 - `GET /api/trend?hours=6` trend summary from DB
 - `GET /api/stats?hours=24` 24h DB stats
@@ -111,6 +120,26 @@ Open:
 - `GET /api/ai-forecast` AI text summary using DB + current data
 - `GET /api/satellite/latest` latest METEOR capture metadata + proxied image URL
 - `GET /api/satellite/image?url=...` proxied satellite image stream
+- `GET /api/wu/nearby?wu_api_key=...&lat=...&lon=...` local Weather Underground PWS stations
+- `GET /api/cefas/buoys?lat=...&lon=...` Cefas WaveNet marine buoys within 100 miles
+- `GET /api/nowcast?...` short-term nowcast using the user's station and WU location where supplied
+
+Marine buoy data returns `not_near_marine_buoys` when no Cefas WaveNet buoy is within 100 miles of the user's location.
+
+## Android APK build
+
+This repo includes a Capacitor build path for Android.
+
+Run locally if Node and Android tooling are installed:
+
+```bash
+npm install
+npm run android:apk
+```
+
+On GitHub, open **Actions -> Build Android APK -> Run workflow**. The debug APK is uploaded as the `ecowitt-weather-debug-apk` artifact.
+
+The APK bundles the dashboard UI and calls the configured FastAPI backend for Ecowitt, Weather Underground, and marine data. In the app, open **Setup**, enter the user's API details, then tap **Use GPS**.
 
 ## AI failover behavior
 
