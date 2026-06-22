@@ -501,28 +501,42 @@
                     <!-- Sunrise / Daylight Card -->
                     <div class="glass-card p-6">
                         <h2 class="text-lg font-semibold text-blue-200 mb-4 flex items-center gap-2">
-                            <i class="ph-fill ph-sun"></i> Sunrise &amp; Daylight
+                            <i class="ph-fill ph-sun-horizon text-yellow-400"></i> Sunrise &amp; Daylight
                         </h2>
                         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                             <div>
-                                <p class="text-sm text-blue-200 mb-1">Sunrise</p>
-                                <p class="text-2xl font-bold" id="sun-sunrise">--:--</p>
+                                <p class="text-sm text-blue-200 mb-1 flex items-center gap-1">
+                                    <i class="ph-fill ph-sunrise text-orange-400"></i> Sunrise
+                                </p>
+                                <p class="text-2xl font-bold text-orange-300" id="sun-sunrise">--:--</p>
+                                <p class="text-xs text-blue-300" id="sun-sunrise-dir">--</p>
                             </div>
                             <div>
-                                <p class="text-sm text-blue-200 mb-1">Sunset</p>
-                                <p class="text-2xl font-bold" id="sun-sunset">--:--</p>
+                                <p class="text-sm text-blue-200 mb-1 flex items-center gap-1">
+                                    <i class="ph-fill ph-sunset text-orange-500"></i> Sunset
+                                </p>
+                                <p class="text-2xl font-bold text-orange-400" id="sun-sunset">--:--</p>
+                                <p class="text-xs text-blue-300" id="sun-sunset-dir">--</p>
                             </div>
                             <div>
-                                <p class="text-sm text-blue-200 mb-1">Daylight</p>
-                                <p class="text-2xl font-bold" id="sun-daylight">--h --m</p>
+                                <p class="text-sm text-blue-200 mb-1 flex items-center gap-1">
+                                    <i class="ph-fill ph-sun text-yellow-400"></i> Daylight
+                                </p>
+                                <p class="text-2xl font-bold text-yellow-300" id="sun-daylight">--h --m</p>
+                                <div id="scale-daylight" class="flex gap-0.5 mt-2 h-1.5 w-full"></div>
                             </div>
                             <div>
-                                <p class="text-sm text-blue-200 mb-1" id="sun-countdown-label">Next</p>
+                                <p class="text-sm text-blue-200 mb-1 flex items-center gap-1">
+                                    <i class="ph ph-clock text-blue-400"></i>
+                                    <span id="sun-countdown-label">Next</span>
+                                </p>
                                 <p class="text-2xl font-bold" id="sun-countdown">--</p>
                             </div>
                         </div>
                         <div class="mt-4 pt-4 border-t border-white/10 flex justify-between items-center text-sm text-blue-200">
-                            <span>Solar Noon</span>
+                            <span class="flex items-center gap-1">
+                                <i class="ph-fill ph-sun-dim text-yellow-300 opacity-70"></i> Solar Noon
+                            </span>
                             <span class="font-semibold text-white" id="sun-noon">--:--</span>
                         </div>
                     </div>
@@ -970,11 +984,15 @@
                 return d;
             }
 
+            const cosAzRiseSet = Math.sin(decl) / Math.cos(latRad);
+            const azRaw = Math.acos(Math.max(-1, Math.min(1, cosAzRiseSet))) * 180 / Math.PI;
             return {
                 sunrise: utcHoursToDate(sunriseUTC),
                 sunset: utcHoursToDate(sunsetUTC),
                 solarNoon: utcHoursToDate(solarNoonUTC),
                 daylightHours: sunsetUTC - sunriseUTC,
+                sunriseAzDeg: azRaw,
+                sunsetAzDeg: 360 - azRaw,
             };
         }
 
@@ -993,6 +1011,11 @@
             safeSetText('sun-sunset', fmtClock(st.sunset));
             safeSetText('sun-daylight', fmtDuration(st.daylightHours));
             safeSetText('sun-noon', fmtClock(st.solarNoon));
+            if (typeof st.sunriseAzDeg !== 'undefined') {
+                safeSetText('sun-sunrise-dir', Math.round(st.sunriseAzDeg) + '° ' + wuTrendIcon(st.sunriseAzDeg));
+                safeSetText('sun-sunset-dir', Math.round(st.sunsetAzDeg) + '° ' + wuTrendIcon(st.sunsetAzDeg));
+                renderScale('scale-daylight', st.daylightHours, 7.0, 17.5, SCALES.uv);
+            }
 
             const now = new Date();
             let target, label;
@@ -1150,6 +1173,20 @@
             pressure: ['#0ea5e9', '#38bdf8', '#7dd3fc', '#bae6fd', '#e0f2fe', '#fef08a', '#fde047', '#facc15', '#eab308', '#ca8a04'],
             soil: ['#92400e', '#b45309', '#d97706', '#fbbf24', '#a3e635', '#4ade80', '#22c55e', '#16a34a', '#166534', '#14532d']
         };
+
+        const WAVE_COLORS = ['#e0f2fe','#7dd3fc','#38bdf8','#60a5fa','#a7f3d0','#facc15','#f97316','#ea580c','#ef4444','#991b1b'];
+
+        function miniBar(value, min, max, colors) {
+            if (!Number.isFinite(value)) {
+                return Array(10).fill('<div class="flex-1 rounded-full" style="background:#ffffff;opacity:0.15"></div>').join('');
+            }
+            let pct = Math.max(0, Math.min(1, (value - min) / (max - min)));
+            let filled = Math.round(pct * 10);
+            if (value > min && filled === 0) filled = 1;
+            return colors.map((c, i) =>
+                '<div class="flex-1 rounded-full" style="background:' + (i < filled ? c : '#ffffff') + ';opacity:' + (i < filled ? '1' : '0.15') + '"></div>'
+            ).join('');
+        }
 
         function renderScale(elementId, value, min, max, colorsArray) {
             const container = document.getElementById(elementId);
@@ -1847,13 +1884,18 @@
                         const count = d.station_count || 0;
                         const rainCount = d.stations_reporting_rain || 0;
                         const nearest = Number.isFinite(d.nearest_distance_mi) ? `${Math.round(d.nearest_distance_mi)}mi+` : '';
+                        const windKmh = Number.isFinite(d.wind_speed_kmh_avg) ? d.wind_speed_kmh_avg : null;
+                        const tBar = tC !== null ? miniBar(cToF(tC), 32, 104, SCALES.temp) : miniBar(NaN,0,1,SCALES.temp);
+                        const wBar = windKmh !== null ? miniBar(windKmh/1.60934, 0, 35, SCALES.wind) : '';
                         return `
                             <div class="wu-station-card text-center">
-                                <p class="text-xs text-blue-300 font-bold mb-1">${oct}</p>
+                                <p class="text-xs font-bold mb-1" style="color:#93c5fd">${oct}</p>
                                 <p class="text-lg font-bold">${tempDisplay}</p>
                                 <p class="text-[10px] text-blue-300 mb-1">${tempSub}</p>
+                                <div class="flex gap-0.5 h-1.5 w-full mb-2">${tBar}</div>
+                                ${windKmh !== null ? `<p class="text-[10px] text-blue-200 mb-0.5"><i class="ph ph-wind"></i> ${windKmh.toFixed(1)} km/h</p><div class="flex gap-0.5 h-1 w-full mb-1">${wBar}</div>` : ''}
                                 <p class="text-[10px] text-blue-200">${count ? count + ' stn' + (count === 1 ? '' : 's') : 'no data'}${nearest ? ' · ' + nearest : ''}</p>
-                                ${rainCount > 0 ? `<p class="text-[10px] text-blue-300 mt-1"><i class="ph-fill ph-cloud-rain"></i> ${rainCount}</p>` : ''}
+                                ${rainCount > 0 ? `<p class="text-[9px] text-blue-300 mt-1"><i class="ph-fill ph-cloud-rain text-blue-400"></i> ${rainCount} raining</p>` : ''}
                             </div>`;
                     }).join('');
                 }
@@ -1907,26 +1949,47 @@
                         cefasBuoyGridEl.innerHTML = buoys.map((b) => {
                             const seaTempC = Number.isFinite(b.sea_temp_c) ? b.sea_temp_c : null;
                             const seaTempDisplay = seaTempC !== null ? `${seaTempC.toFixed(1)}°C (${cToF(seaTempC).toFixed(1)}°F)` : '--';
-                            const waveH = Number.isFinite(b.wave_height_m) ? `${b.wave_height_m.toFixed(2)} m` : '--';
+                            const waveHVal = Number.isFinite(b.wave_height_m) ? b.wave_height_m : null;
+                            const waveH = waveHVal !== null ? `${waveHVal.toFixed(2)} m` : '--';
                             const wavePeriod = Number.isFinite(b.wave_period_peak_s) ? `${b.wave_period_peak_s.toFixed(1)} s` : '--';
                             const waveDirText = wuTrendIcon(b.wave_direction_deg);
-                            const waveDirDisplay = Number.isFinite(b.wave_direction_deg) ? `${Math.round(b.wave_direction_deg)}°${waveDirText ? ' ' + waveDirText : ''}` : '--';
-                            const overdueFlag = b.overdue ? '<span class="text-yellow-400" title="Data more than 3 hours old"><i class="ph-fill ph-warning-circle"></i></span>' : '';
+                            const waveDirDisplay = Number.isFinite(b.wave_direction_deg) ? `${Math.round(b.wave_direction_deg)}° ${waveDirText}` : '--';
+                            const waveRot = Number.isFinite(b.wave_direction_deg) ? b.wave_direction_deg : 0;
+                            const overdueFlag = b.overdue ? '<span class="text-yellow-400" title="Stale data"><i class="ph-fill ph-warning-circle"></i></span>' : '<span class="text-green-400 text-[10px]"><i class="ph-fill ph-check-circle"></i></span>';
+                            const tBar = seaTempC !== null ? miniBar(cToF(seaTempC), 41, 68, SCALES.temp) : miniBar(NaN,0,1,SCALES.temp);
+                            const wvBar = waveHVal !== null ? miniBar(waveHVal, 0, 4.0, WAVE_COLORS) : miniBar(NaN,0,1,WAVE_COLORS);
                             return `
                                 <div class="wu-station-card">
-                                    <div class="flex justify-between items-start mb-2">
+                                    <div class="flex justify-between items-start mb-3">
                                         <div>
                                             <p class="font-semibold text-sm">${b.name || b.id}</p>
                                             <p class="text-xs text-blue-300">${Number.isFinite(b.distance_mi) ? b.distance_mi.toFixed(1) + ' mi' : ''}${b.direction_from_centre ? ' ' + b.direction_from_centre : ''}</p>
                                         </div>
                                         ${overdueFlag}
                                     </div>
-                                    <div class="grid grid-cols-2 gap-x-2 gap-y-1 text-xs text-blue-200">
-                                        <span>Sea Temp</span><span class="text-right text-white font-medium">${seaTempDisplay}</span>
-                                        <span>Wave Height</span><span class="text-right text-white font-medium">${waveH}</span>
-                                        <span>Wave Period</span><span class="text-right text-white font-medium">${wavePeriod}</span>
-                                        <span>Wave Dir</span><span class="text-right text-white font-medium">${waveDirDisplay}</span>
-                                        <span>Updated</span><span class="text-right text-white font-medium">${cefasTimeAgo(b.timestamp)}</span>
+                                    <div class="space-y-2 text-xs">
+                                        <div>
+                                            <div class="flex justify-between mb-0.5">
+                                                <span class="text-blue-200 flex items-center gap-1"><i class="ph-fill ph-thermometer text-cyan-400"></i> Sea Temp</span>
+                                                <span class="text-white font-medium">${seaTempDisplay}</span>
+                                            </div>
+                                            <div class="flex gap-0.5 h-1.5 w-full">${tBar}</div>
+                                        </div>
+                                        <div>
+                                            <div class="flex justify-between mb-0.5">
+                                                <span class="text-blue-200 flex items-center gap-1"><i class="ph-fill ph-waves text-blue-400"></i> Wave Height</span>
+                                                <span class="text-white font-medium">${waveH}</span>
+                                            </div>
+                                            <div class="flex gap-0.5 h-1.5 w-full">${wvBar}</div>
+                                        </div>
+                                        <div class="grid grid-cols-2 gap-x-3 gap-y-1">
+                                            <span class="text-blue-200 flex items-center gap-1"><i class="ph ph-clock text-blue-300"></i> Period</span>
+                                            <span class="text-right text-white font-medium">${wavePeriod}</span>
+                                            <span class="text-blue-200 flex items-center gap-1"><i class="ph-fill ph-navigation-arrow text-blue-400" style="display:inline-block;transform:rotate(${waveRot}deg)"></i> Wave Dir</span>
+                                            <span class="text-right text-white font-medium">${waveDirDisplay}</span>
+                                            <span class="text-blue-200 flex items-center gap-1"><i class="ph ph-clock-counter-clockwise text-blue-300"></i> Updated</span>
+                                            <span class="text-right text-white font-medium">${cefasTimeAgo(b.timestamp)}</span>
+                                        </div>
                                     </div>
                                 </div>`;
                         }).join('');
