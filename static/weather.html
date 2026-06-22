@@ -1039,10 +1039,16 @@
                 const res = await fetchBackendJson('/api/snapshots?limit=288');
                 if (res.status !== 'ok') throw new Error('Invalid snapshots response');
                 const items = (res.items || []).slice().reverse();
+                function hasTzOffset(s) {
+                    if (!s) return false;
+                    if (s.endsWith('Z') || s.endsWith('z')) return true;
+                    if (s.length < 6) return false;
+                    const t = s.slice(-6);
+                    return (t[0] === '+' || t[0] === '-') && t[3] === ':';
+                }
                 const labels = items.map((it) => {
                     const raw = it.captured_at || '';
-                    const hasTz = /[Zz]$/.test(raw) || /[+-]\d{2}:\d{2}$/.test(raw);
-                    const d = new Date(hasTz ? raw : raw + 'Z');
+                    const d = new Date(hasTzOffset(raw) ? raw : raw + 'Z');
                     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                 });
                 const tempData = items.map((it) => Number.isFinite(it.outdoor_temp_f) ? fToC(it.outdoor_temp_f) : null);
