@@ -290,21 +290,31 @@
             </div>
         </header>
 
-        <section id="settings-panel" class="glass-card p-5 mb-6 hidden">
+        <!-- Navigation Tabs -->
+        <div class="flex border-b border-white/10 mb-6 px-2 gap-4">
+            <button id="tab-setup" class="tab-btn tab-active px-4 py-2 font-semibold rounded-t-lg flex items-center gap-2">
+                <i class="ph ph-sliders"></i> Setup
+            </button>
+            <button id="tab-live" class="tab-btn tab-inactive px-4 py-2 font-semibold rounded-t-lg flex items-center gap-2">
+                <i class="ph ph-broadcast"></i> Live Data
+            </button>
+            <button id="tab-historic" class="tab-btn tab-inactive px-4 py-2 font-semibold rounded-t-lg flex items-center gap-2">
+                <i class="ph ph-clock-counter-clockwise"></i> Historic Data
+            </button>
+        </div>
+
+        <div id="view-setup">
+        <section id="settings-panel" class="glass-card p-5 mb-6">
             <form id="settings-form" class="space-y-4">
                 <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                     <div>
                         <h2 class="text-lg font-semibold text-blue-200 flex items-center gap-2"><i class="ph ph-sliders"></i> Station Setup</h2>
-                        <p id="profile-status" class="text-sm text-blue-300 mt-1">Enter your Ecowitt and Weather Underground details.</p>
+                        <p id="profile-status" class="text-sm text-blue-300 mt-1">Enter your Ecowitt, Weather Underground, Gemini, and GPS details.</p>
                     </div>
                     <div class="flex flex-wrap gap-2">
                         <button id="use-location-btn" type="button" class="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded-full text-sm font-semibold transition-colors">
                             <i class="ph-bold ph-map-pin"></i>
                             Use GPS
-                        </button>
-                        <button id="save-settings-btn" type="submit" class="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-full text-sm font-semibold transition-colors">
-                            <i class="ph-bold ph-floppy-disk"></i>
-                            Save
                         </button>
                         <button id="reset-settings-btn" type="button" class="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white px-3 py-2 rounded-full text-sm font-semibold transition-colors">
                             <i class="ph-bold ph-trash"></i>
@@ -342,17 +352,14 @@
                     <span class="block mb-1 font-semibold">Gemini API Key</span>
                     <input id="gemini-api-key-input" class="settings-field font-mono text-sm" autocomplete="off" spellcheck="false" placeholder="Google AI Studio key">
                 </label>
+                <div class="flex justify-end pt-2">
+                    <button id="save-settings-btn" type="submit" class="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-full font-semibold transition-colors shadow-lg">
+                        <i class="ph-bold ph-floppy-disk"></i>
+                        Save &amp; Open Dashboard
+                    </button>
+                </div>
             </form>
         </section>
-
-        <!-- Navigation Tabs -->
-        <div class="flex border-b border-white/10 mb-6 px-2 gap-4">
-            <button id="tab-live" class="tab-btn tab-active px-4 py-2 font-semibold rounded-t-lg flex items-center gap-2">
-                <i class="ph ph-broadcast"></i> Live Data
-            </button>
-            <button id="tab-historic" class="tab-btn tab-inactive px-4 py-2 font-semibold rounded-t-lg flex items-center gap-2">
-                <i class="ph ph-clock-counter-clockwise"></i> Historic Data
-            </button>
         </div>
 
 
@@ -414,7 +421,7 @@
                 <span id="ai-forecast-model" class="text-xs text-blue-300">Model: --</span>
             </div>
             <div class="space-y-2 text-sm">
-                <p id="ai-forecast-status" class="text-blue-200">Please wait, analysing weather data and satellite images...</p>
+                <p id="ai-forecast-status" class="text-blue-200">Please wait, analysing weather data...</p>
                 <p class="text-blue-200"><span class="font-semibold text-white">Last 24h:</span> <span id="ai-summary-24h">Analysing recent observations...</span></p>
                 <p class="text-blue-200"><span class="font-semibold text-white">Next 24h:</span> <span id="ai-forecast-24h">Building forecast...</span></p>
                 <p class="text-blue-200"><span class="font-semibold text-white">Comfort Outlook:</span> <span id="ai-comfort-outlook">Checking comfort trend...</span></p>
@@ -530,53 +537,6 @@
                             <p class="text-sm text-blue-200 flex items-center gap-2">Array Batt: <span id="array-batt" class="font-mono text-white opacity-70">--</span></p>
                         </div>
                     </div>
-
-                    <section class="glass-card p-5">
-                        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
-                            <div>
-                                <h2 class="text-lg font-semibold text-blue-200 flex items-center gap-2">
-                                    <i class="ph ph-satellite"></i> Latest METEOR Satellite Images
-                                </h2>
-                                <p id="satellite-status" class="text-sm text-blue-200 mt-1">Loading latest satellite capture...</p>
-                            </div>
-                            <button id="satellite-refresh-btn" class="self-start md:self-auto flex items-center gap-2 bg-sky-600 hover:bg-sky-500 text-white px-3 py-2 rounded-full text-sm font-semibold transition-colors">
-                                <i class="ph-bold ph-arrows-clockwise"></i>
-                                Refresh Images
-                            </button>
-                        </div>
-                        <div class="satellite-meta mb-4 text-sm">
-                            <div class="rounded-lg bg-white/5 border border-white/10 p-3">
-                                <p class="text-blue-200 text-xs">Satellite</p>
-                                <p id="satellite-name" class="font-semibold">--</p>
-                            </div>
-                            <div class="rounded-lg bg-white/5 border border-white/10 p-3">
-                                <p class="text-blue-200 text-xs">Pass Start</p>
-                                <p id="satellite-pass-start" class="font-semibold">--</p>
-                            </div>
-                            <div class="rounded-lg bg-white/5 border border-white/10 p-3">
-                                <p class="text-blue-200 text-xs">Direction</p>
-                                <p id="satellite-direction" class="font-semibold">--</p>
-                            </div>
-                            <div class="rounded-lg bg-white/5 border border-white/10 p-3">
-                                <p class="text-blue-200 text-xs">Enhancements</p>
-                                <p id="satellite-enhancement" class="font-semibold">--</p>
-                            </div>
-                        </div>
-                        <div class="satellite-image-grid">
-                            <div class="satellite-frame">
-                                <a id="satellite-link-primary" href="#" target="_blank" rel="noopener">
-                                    <img id="satellite-image-primary" alt="Latest METEOR primary satellite capture" loading="lazy">
-                                </a>
-                                <div id="satellite-caption-primary" class="satellite-caption">--</div>
-                            </div>
-                            <div class="satellite-frame">
-                                <a id="satellite-link-secondary" href="#" target="_blank" rel="noopener">
-                                    <img id="satellite-image-secondary" alt="Latest METEOR secondary satellite capture" loading="lazy">
-                                </a>
-                                <div id="satellite-caption-secondary" class="satellite-caption">--</div>
-                            </div>
-                        </div>
-                    </section>
 
                     <!-- Sunrise / Daylight Card -->
                     <div class="glass-card p-6">
@@ -944,6 +904,7 @@
     <script>
         // --- CONFIGURATION ---
         const PROFILE_STORAGE_KEY = 'ecowitt-dashboard-profile-v1';
+        const LOCAL_TREND_STORAGE_KEY = 'ecowitt-dashboard-local-trend-v1';
         const WU_API_BASE = 'https://api.weather.com';
         const CEFAS_API_BASE = 'https://wavenet-api.cefas.co.uk/api';
         const WU_RADIUS_MILES = 100;
@@ -979,6 +940,7 @@
         let rawData = null;
         let rawHistData = null;
         let refreshTimer = null;
+        let dashboardStarted = false;
         let hasFastPrefill = false;
         let aiForecastInFlight = false;
         let aiForecastLastSuccessAt = 0;
@@ -1013,8 +975,10 @@
         const refreshIcon = document.getElementById('refresh-icon');
         const loader = document.getElementById('loader');
         
+        const tabSetup = document.getElementById('tab-setup');
         const tabLive = document.getElementById('tab-live');
         const tabHistoric = document.getElementById('tab-historic');
+        const viewSetup = document.getElementById('view-setup');
         const viewLive = document.getElementById('view-live');
         const viewHistoric = document.getElementById('view-historic');
         const histDateInput = document.getElementById('hist-date');
@@ -1246,7 +1210,6 @@
             applyProfileToConfig();
             if (!hasEcowittProfile()) {
                 setProfileStatus('Enter your three Ecowitt details to show your own station.', 'info');
-                if (settingsPanel) settingsPanel.classList.remove('hidden');
                 return;
             }
             if (!appProfile.wuApiKey) {
@@ -1278,6 +1241,9 @@
             const capacitorGeo = window.Capacitor?.Plugins?.Geolocation;
             if (capacitorGeo?.getCurrentPosition) {
                 try {
+                    if (capacitorGeo.requestPermissions) {
+                        await capacitorGeo.requestPermissions({ permissions: ['location'] });
+                    }
                     const pos = await capacitorGeo.getCurrentPosition({
                         enableHighAccuracy: true,
                         timeout: 15000,
@@ -1303,12 +1269,13 @@
 
         function initProfileUi() {
             refreshProfileUi();
-            if (settingsToggleBtn && settingsPanel) {
-                settingsToggleBtn.addEventListener('click', () => settingsPanel.classList.toggle('hidden'));
+            if (settingsToggleBtn) {
+                settingsToggleBtn.addEventListener('click', () => setActiveTab('setup'));
             }
             if (settingsForm) {
-                settingsForm.addEventListener('submit', (event) => {
+                settingsForm.addEventListener('submit', async (event) => {
                     event.preventDefault();
+                    const wasStarted = dashboardStarted;
                     appProfile = {
                         appKey: appKeyInput ? appKeyInput.value.trim() : '',
                         apiKey: apiKeyInput ? apiKeyInput.value.trim() : '',
@@ -1320,7 +1287,9 @@
                     };
                     saveStoredProfile();
                     refreshProfileUi();
-                    fetchWeatherData(false);
+                    setActiveTab('live');
+                    await startDashboard();
+                    if (wasStarted) fetchWeatherData(false);
                     updateWuStations(true);
                     updateCefasBuoys(true);
                     updateNowcast();
@@ -1412,8 +1381,83 @@
         }
 
         // Mini 24h Trend Chart
+        function readLocalTrendSamples() {
+            try {
+                const rows = JSON.parse(localStorage.getItem(LOCAL_TREND_STORAGE_KEY) || '[]');
+                const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+                return rows.filter((row) => Number.isFinite(row.t) && row.t >= cutoff);
+            } catch (_) {
+                return [];
+            }
+        }
+
+        function recordLocalTrendSnapshot() {
+            if (!isStandaloneApp() || !rawData?.data) return;
+            const d = rawData.data;
+            const tempF = numOrNull(d.outdoor?.temperature?.value);
+            const rainRateInHr = numOrNull(d.rainfall?.rain_rate?.value);
+            if (!Number.isFinite(tempF) && !Number.isFinite(rainRateInHr)) return;
+            const rows = readLocalTrendSamples();
+            const now = Date.now();
+            const last = rows[rows.length - 1];
+            if (last && now - last.t < 60 * 1000) {
+                last.temp_f = tempF;
+                last.rain_rate_inhr = rainRateInHr;
+            } else {
+                rows.push({ t: now, temp_f: tempF, rain_rate_inhr: rainRateInHr });
+            }
+            localStorage.setItem(LOCAL_TREND_STORAGE_KEY, JSON.stringify(rows.slice(-288)));
+        }
+
+        function renderStandaloneMiniTrendChart() {
+            const rows = readLocalTrendSamples();
+            const sourceRows = rows.length ? rows : (rawData?.data ? [{
+                t: Date.now(),
+                temp_f: numOrNull(rawData.data.outdoor?.temperature?.value),
+                rain_rate_inhr: numOrNull(rawData.data.rainfall?.rain_rate?.value),
+            }] : []);
+            if (!sourceRows.length) return;
+            const labels = sourceRows.map((row) => new Date(row.t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+            const tempData = sourceRows.map((row) => Number.isFinite(row.temp_f) ? fToC(row.temp_f) : null);
+            const rainData = sourceRows.map((row) => Number.isFinite(row.rain_rate_inhr) ? inToMm(row.rain_rate_inhr) : null);
+            const ctx = document.getElementById('mini-trend-chart');
+            if (!ctx) return;
+            if (miniTrendChart) miniTrendChart.destroy();
+            miniTrendChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            type: 'line', label: 'Temp (Â°C)', data: tempData,
+                            borderColor: '#fb7185', backgroundColor: '#fb718533',
+                            borderWidth: 2, pointRadius: labels.length <= 1 ? 3 : 0, tension: 0.3,
+                            yAxisID: 'y', fill: true,
+                        },
+                        {
+                            type: 'bar', label: 'Rain (mm/hr)', data: rainData,
+                            backgroundColor: 'rgba(96,165,250,0.6)', yAxisID: 'y1',
+                        },
+                    ],
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: { legend: { labels: { color: '#cbd5e1', boxWidth: 12, font: { size: 10 } } } },
+                    scales: {
+                        x: { display: labels.length > 1, ticks: { color: '#93c5fd', maxTicksLimit: 6, font: { size: 10 } }, grid: { display: false } },
+                        y: { position: 'left', ticks: { color: '#fb7185', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.06)' } },
+                        y1: { position: 'right', beginAtZero: true, ticks: { color: '#60a5fa', font: { size: 10 } }, grid: { display: false } },
+                    },
+                },
+            });
+        }
+
         async function updateMiniTrendChart() {
-            if (isStandaloneApp()) return;
+            if (isStandaloneApp()) {
+                renderStandaloneMiniTrendChart();
+                return;
+            }
             if (!CONFIG.USE_BACKEND_PROXY || window.location.protocol === 'file:') return;
             try {
                 const res = await fetchBackendJson('/api/snapshots?limit=288');
@@ -1754,7 +1798,9 @@
                 }
                 
                 updateDOM();
+                recordLocalTrendSnapshot();
                 updateStatsFromDatabase();
+                updateMiniTrendChart();
                 if (!isAutoRefresh) updateAiForecast(true);
                 safeSetText('last-updated', `Updated: ${new Date().toLocaleTimeString()}`);
                 
@@ -2094,7 +2140,7 @@
         }
 
         function showAiForecastLoading() {
-            if (aiStatusEl) aiStatusEl.textContent = 'Please wait, analysing weather data and satellite images...';
+            if (aiStatusEl) aiStatusEl.textContent = 'Please wait, analysing weather data...';
             if (aiModelEl) aiModelEl.textContent = 'Model: analysing...';
             if (aiSummary24El) aiSummary24El.textContent = 'Analysing recent observations...';
             if (aiForecast24El) aiForecast24El.textContent = 'Building forecast...';
@@ -3012,25 +3058,36 @@ ${JSON.stringify({
             histCharts.soil     = buildHistoricChart('chart-soil',       labels, soilData,      currentOverlay.soilMoisture, 'Soil Moisture CH1', '#4ade80', (v) => `${Number(v).toFixed(0)}%`);
         }
 
-        // Tab Events
-        tabLive.addEventListener('click', () => {
-            tabLive.classList.add('tab-active'); tabLive.classList.remove('tab-inactive');
-            tabHistoric.classList.add('tab-inactive'); tabHistoric.classList.remove('tab-active');
-            viewLive.classList.remove('hidden'); viewHistoric.classList.add('hidden');
-            refreshBtn.style.display = 'flex';
-            liveOnlySections.forEach((section) => section.classList.remove('hidden'));
-        });
+        function setActiveTab(tabName) {
+            const isSetup = tabName === 'setup';
+            const isLive = tabName === 'live';
+            const isHistoric = tabName === 'historic';
+            [
+                [tabSetup, isSetup],
+                [tabLive, isLive],
+                [tabHistoric, isHistoric],
+            ].forEach(([tab, active]) => {
+                if (!tab) return;
+                tab.classList.toggle('tab-active', active);
+                tab.classList.toggle('tab-inactive', !active);
+            });
+            if (viewSetup) viewSetup.classList.toggle('hidden', !isSetup);
+            if (viewLive) viewLive.classList.toggle('hidden', !isLive);
+            if (viewHistoric) viewHistoric.classList.toggle('hidden', !isHistoric);
+            if (refreshBtn) refreshBtn.style.display = isLive ? 'flex' : 'none';
+            liveOnlySections.forEach((section) => section.classList.toggle('hidden', !isLive));
+            if (isLive) {
+                updateMiniTrendChart();
+                updateNowcast();
+            }
+        }
 
-        tabHistoric.addEventListener('click', () => {
-            tabHistoric.classList.add('tab-active'); tabHistoric.classList.remove('tab-inactive');
-            tabLive.classList.add('tab-inactive'); tabLive.classList.remove('tab-active');
-            viewHistoric.classList.remove('hidden'); viewLive.classList.add('hidden');
-            refreshBtn.style.display = 'none';
-            liveOnlySections.forEach((section) => section.classList.add('hidden'));
-        });
+        // Tab Events
+        if (tabSetup) tabSetup.addEventListener('click', () => setActiveTab('setup'));
+        tabLive.addEventListener('click', () => setActiveTab('live'));
+        tabHistoric.addEventListener('click', () => setActiveTab('historic'));
 
         fetchHistBtn.addEventListener('click', fetchHistoricData);
-        if (satelliteRefreshBtn) satelliteRefreshBtn.addEventListener('click', () => updateSatelliteImage(true));
         loaderClose.addEventListener('click', () => { loader.classList.remove('active'); });
         refreshBtn.addEventListener('click', () => { resetTimer(); fetchWeatherData(false); });
 
@@ -3042,15 +3099,14 @@ ${JSON.stringify({
         if (wuRefreshBtn) wuRefreshBtn.addEventListener('click', () => updateWuStations(true));
         if (cefasRefreshBtn) cefasRefreshBtn.addEventListener('click', () => updateCefasBuoys(true));
 
-        (async () => {
-            initProfileUi();
+        async function startDashboard() {
+            if (dashboardStarted) return;
+            dashboardStarted = true;
             await fastPrefillFromDatabase();
             fetchWeatherData(false);
             resetTimer();
             updateAiForecast();
             setInterval(updateAiForecast, 30 * 60 * 1000);
-            updateSatelliteImage();
-            setInterval(updateSatelliteImage, 5 * 60 * 1000);
             updateWuStations();
             setInterval(updateWuStations, 10 * 60 * 1000);
             updateCefasBuoys();
@@ -3061,6 +3117,17 @@ ${JSON.stringify({
             setInterval(updateSunTimes, 60 * 1000);
             updateMiniTrendChart();
             setInterval(updateMiniTrendChart, 10 * 60 * 1000);
+        }
+
+        (async () => {
+            initProfileUi();
+            if (hasEcowittProfile()) {
+                setActiveTab('live');
+                await startDashboard();
+            } else {
+                setActiveTab('setup');
+                updateSunTimes();
+            }
         })();
 
     </script>
