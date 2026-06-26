@@ -276,26 +276,6 @@
             border-radius: 0.9rem;
             padding: 12px 14px;
         }
-
-        .settings-field {
-            background: rgba(2, 6, 23, 0.58);
-            border: 1px solid rgba(147, 197, 253, 0.22);
-            border-radius: 0.75rem;
-            color: #fff;
-            min-height: 44px;
-            padding: 10px 12px;
-            width: 100%;
-        }
-
-        .settings-field::placeholder {
-            color: rgba(191, 219, 254, 0.55);
-        }
-
-        .settings-field:focus {
-            border-color: rgba(96, 165, 250, 0.9);
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.22);
-            outline: none;
-        }
     </style>
 </head>
 <body class="p-4 md:p-8 antialiased">
@@ -308,18 +288,13 @@
             <div class="flex items-center gap-3">
                 <i id="hero-weather-icon" class="ph-fill ph-cloud-sun text-4xl text-yellow-400"></i>
                 <div>
-                    <h1 id="station-title" class="text-2xl font-bold tracking-tight">Ecowitt Station</h1>
+                    <h1 class="text-2xl font-bold tracking-tight">Ecowitt Station (Tingley)</h1>
                     <p class="text-sm text-blue-200 opacity-80" id="last-updated">Updating...</p>
                 </div>
             </div>
 
-            <div class="flex flex-wrap items-center justify-center md:justify-end gap-3 md:gap-6">
+            <div class="flex items-center gap-6">
                 <div class="text-sm font-semibold text-blue-200">Units: Metric (Imperial)</div>
-
-                <button id="settings-toggle-btn" class="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-full font-semibold transition-colors shadow-lg">
-                    <i class="ph-bold ph-gear"></i>
-                    Setup
-                </button>
 
                 <!-- Theme Toggle -->
                 <button id="theme-btn" onclick="toggleTheme()" class="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-full font-semibold transition-all shadow-lg" title="Toggle Cyberpunk theme">
@@ -337,74 +312,12 @@
 
         <!-- Navigation Tabs -->
         <div class="flex border-b border-white/10 mb-6 px-2 gap-4">
-            <button id="tab-setup" class="tab-btn tab-active px-4 py-2 font-semibold rounded-t-lg flex items-center gap-2">
-                <i class="ph ph-sliders"></i> Setup
-            </button>
-            <button id="tab-live" class="tab-btn tab-inactive px-4 py-2 font-semibold rounded-t-lg flex items-center gap-2">
+            <button id="tab-live" class="tab-btn tab-active px-4 py-2 font-semibold rounded-t-lg flex items-center gap-2">
                 <i class="ph ph-broadcast"></i> Live Data
             </button>
             <button id="tab-historic" class="tab-btn tab-inactive px-4 py-2 font-semibold rounded-t-lg flex items-center gap-2">
                 <i class="ph ph-clock-counter-clockwise"></i> Historic Data
             </button>
-        </div>
-
-        <div id="view-setup">
-        <section id="settings-panel" class="glass-card p-5 mb-6">
-            <form id="settings-form" class="space-y-4">
-                <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                    <div>
-                        <h2 class="text-lg font-semibold text-blue-200 flex items-center gap-2"><i class="ph ph-sliders"></i> Station Setup</h2>
-                        <p id="profile-status" class="text-sm text-blue-300 mt-1">Enter your Ecowitt, Weather Underground, Gemini, and GPS details.</p>
-                    </div>
-                    <div class="flex flex-wrap gap-2">
-                        <button id="use-location-btn" type="button" class="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded-full text-sm font-semibold transition-colors">
-                            <i class="ph-bold ph-map-pin"></i>
-                            Use GPS
-                        </button>
-                        <button id="reset-settings-btn" type="button" class="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white px-3 py-2 rounded-full text-sm font-semibold transition-colors">
-                            <i class="ph-bold ph-trash"></i>
-                            Reset
-                        </button>
-                    </div>
-                </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    <label class="text-sm text-blue-200">
-                        <span class="block mb-1 font-semibold">Ecowitt Application Key</span>
-                        <input id="app-key-input" class="settings-field font-mono text-sm" autocomplete="off" spellcheck="false" placeholder="Application key">
-                    </label>
-                    <label class="text-sm text-blue-200">
-                        <span class="block mb-1 font-semibold">Ecowitt API Key</span>
-                        <input id="api-key-input" class="settings-field font-mono text-sm" autocomplete="off" spellcheck="false" placeholder="API key">
-                    </label>
-                    <label class="text-sm text-blue-200">
-                        <span class="block mb-1 font-semibold">Station MAC Address</span>
-                        <input id="mac-input" class="settings-field font-mono text-sm" autocomplete="off" spellcheck="false" placeholder="AA:BB:CC:DD:EE:FF">
-                    </label>
-                    <label class="text-sm text-blue-200">
-                        <span class="block mb-1 font-semibold">Weather Underground API Key</span>
-                        <input id="wu-api-key-input" class="settings-field font-mono text-sm" autocomplete="off" spellcheck="false" placeholder="Weather.com API key">
-                    </label>
-                    <label class="text-sm text-blue-200">
-                        <span class="block mb-1 font-semibold">Latitude</span>
-                        <input id="lat-input" class="settings-field font-mono text-sm" inputmode="decimal" placeholder="Use GPS">
-                    </label>
-                    <label class="text-sm text-blue-200">
-                        <span class="block mb-1 font-semibold">Longitude</span>
-                        <input id="lon-input" class="settings-field font-mono text-sm" inputmode="decimal" placeholder="Use GPS">
-                    </label>
-                </div>
-                <label class="text-sm text-blue-200 block">
-                    <span class="block mb-1 font-semibold">Gemini API Key</span>
-                    <input id="gemini-api-key-input" class="settings-field font-mono text-sm" autocomplete="off" spellcheck="false" placeholder="Google AI Studio key">
-                </label>
-                <div class="flex justify-end pt-2">
-                    <button id="save-settings-btn" type="submit" class="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-full font-semibold transition-colors shadow-lg">
-                        <i class="ph-bold ph-floppy-disk"></i>
-                        Save &amp; Open Dashboard
-                    </button>
-                </div>
-            </form>
-        </section>
         </div>
 
 
@@ -466,7 +379,7 @@
                 <span id="ai-forecast-model" class="text-xs text-blue-300">Model: --</span>
             </div>
             <div class="space-y-2 text-sm">
-                <p id="ai-forecast-status" class="text-blue-200">Please wait, analysing weather data...</p>
+                <p id="ai-forecast-status" class="text-blue-200">Please wait, analysing weather data and satellite images...</p>
                 <p class="text-blue-200"><span class="font-semibold text-white">Last 24h:</span> <span id="ai-summary-24h">Analysing recent observations...</span></p>
                 <p class="text-blue-200"><span class="font-semibold text-white">Next 24h:</span> <span id="ai-forecast-24h">Building forecast...</span></p>
                 <p class="text-blue-200"><span class="font-semibold text-white">Comfort Outlook:</span> <span id="ai-comfort-outlook">Checking comfort trend...</span></p>
@@ -502,6 +415,48 @@
                 <div class="rounded-lg bg-white/5 border border-white/10 p-3">
                     <p class="text-blue-200 text-xs">Estimated Arrival</p>
                     <p id="nowcast-eta" class="font-semibold">--</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="glass-card p-5 mb-6 live-only">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
+                <div>
+                    <h2 class="text-lg font-semibold text-blue-200 flex items-center gap-2">
+                        <i class="ph-fill ph-lightning text-yellow-400"></i> Thunderstorm Risk
+                    </h2>
+                    <p class="text-xs text-blue-300 mt-0.5">WH57 sensor (live strikes) + UKMO atmospheric instability (CAPE/CIN) &mdash; no external forecast text used</p>
+                </div>
+                <span id="cape-risk-badge" class="self-start md:self-auto px-3 py-1.5 text-sm font-semibold rounded-full bg-gray-500/20 text-gray-300 border border-gray-500/30">Loading...</span>
+            </div>
+            <p id="cape-assessment" class="text-sm text-blue-100 mb-4">Calculating thunderstorm risk...</p>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-4">
+                <div class="rounded-lg bg-white/5 border border-white/10 p-3">
+                    <p class="text-blue-200 text-xs flex items-center gap-1"><i class="ph ph-thermometer-hot text-orange-400"></i> CAPE Now</p>
+                    <p id="cape-current" class="font-semibold">--</p>
+                </div>
+                <div class="rounded-lg bg-white/5 border border-white/10 p-3">
+                    <p class="text-blue-200 text-xs flex items-center gap-1"><i class="ph ph-arrow-fat-up text-blue-400"></i> CIN Now</p>
+                    <p id="cape-cin" class="font-semibold">--</p>
+                </div>
+                <div class="rounded-lg bg-white/5 border border-white/10 p-3">
+                    <p class="text-blue-200 text-xs flex items-center gap-1"><i class="ph ph-chart-line-up text-yellow-400"></i> Peak CAPE 24h</p>
+                    <p id="cape-peak-24h" class="font-semibold">--</p>
+                    <p id="cape-peak-24h-time" class="text-[10px] text-blue-300">--</p>
+                </div>
+                <div class="rounded-lg bg-white/5 border border-white/10 p-3">
+                    <p class="text-blue-200 text-xs flex items-center gap-1"><i class="ph-fill ph-lightning text-yellow-400"></i> WH57 Strikes</p>
+                    <p id="cape-wh57-strikes" class="font-semibold">--</p>
+                    <p id="cape-wh57-dist" class="text-[10px] text-blue-300">--</p>
+                </div>
+            </div>
+            <div class="rounded-lg bg-white/5 border border-white/10 p-3">
+                <p class="text-xs text-blue-200 mb-2">CAPE (J/kg) &mdash; next 48h</p>
+                <div id="cape-hourly-bars" class="flex gap-px items-end" style="height:40px"></div>
+                <div class="flex justify-between text-[9px] text-blue-300 mt-1">
+                    <span id="cape-bar-start">--</span>
+                    <span class="text-yellow-400">300 = moderate &nbsp; 1000 = elevated &nbsp; 2000 = severe</span>
+                    <span id="cape-bar-end">--</span>
                 </div>
             </div>
         </section>
@@ -582,6 +537,66 @@
                             <p class="text-sm text-blue-200 flex items-center gap-2">Array Batt: <span id="array-batt" class="font-mono text-white opacity-70">--</span></p>
                         </div>
                     </div>
+
+                    <section class="glass-card p-5">
+                        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+                            <div>
+                                <h2 class="text-lg font-semibold text-blue-200 flex items-center gap-2">
+                                    <i class="ph ph-satellite"></i> Latest METEOR Satellite Images
+                                </h2>
+                                <p id="satellite-status" class="text-sm text-blue-200 mt-1">Loading latest satellite capture...</p>
+                            </div>
+                            <button id="satellite-refresh-btn" class="self-start md:self-auto flex items-center gap-2 bg-sky-600 hover:bg-sky-500 text-white px-3 py-2 rounded-full text-sm font-semibold transition-colors">
+                                <i class="ph-bold ph-arrows-clockwise"></i>
+                                Refresh Images
+                            </button>
+                        </div>
+                        <div class="satellite-meta mb-4 text-sm">
+                            <div class="rounded-lg bg-white/5 border border-white/10 p-3">
+                                <p class="text-blue-200 text-xs">Satellite</p>
+                                <p id="satellite-name" class="font-semibold">--</p>
+                            </div>
+                            <div class="rounded-lg bg-white/5 border border-white/10 p-3">
+                                <p class="text-blue-200 text-xs">Pass Start</p>
+                                <p id="satellite-pass-start" class="font-semibold">--</p>
+                            </div>
+                            <div class="rounded-lg bg-white/5 border border-white/10 p-3">
+                                <p class="text-blue-200 text-xs">Direction</p>
+                                <p id="satellite-direction" class="font-semibold">--</p>
+                            </div>
+                            <div class="rounded-lg bg-white/5 border border-white/10 p-3">
+                                <p class="text-blue-200 text-xs">Enhancements</p>
+                                <p id="satellite-enhancement" class="font-semibold">--</p>
+                            </div>
+                        </div>
+                        <div class="satellite-image-grid">
+                            <div class="satellite-frame">
+                                <a id="satellite-link-primary" href="#" target="_blank" rel="noopener">
+                                    <img id="satellite-image-primary" alt="Latest METEOR primary satellite capture" loading="lazy">
+                                </a>
+                                <div id="satellite-caption-primary" class="satellite-caption">--</div>
+                            </div>
+                            <div class="satellite-frame">
+                                <a id="satellite-link-secondary" href="#" target="_blank" rel="noopener">
+                                    <img id="satellite-image-secondary" alt="Latest METEOR secondary satellite capture" loading="lazy">
+                                </a>
+                                <div id="satellite-caption-secondary" class="satellite-caption">--</div>
+                            </div>
+                        </div>
+
+                        <!-- Polar pass-trajectory thumbnails (hidden until polar images exist) -->
+                        <div id="satellite-polar-row" class="hidden mt-3">
+                            <button
+                                onclick="const d=document.getElementById('satellite-polar-thumbs');d.classList.toggle('hidden');this.querySelector('.ph').classList.toggle('ph-caret-down');this.querySelector('.ph').classList.toggle('ph-caret-up');"
+                                class="flex items-center gap-2 text-xs text-blue-300 hover:text-blue-200 mb-2 transition-colors">
+                                <i class="ph ph-caret-down"></i>
+                                Pass trajectory charts
+                            </button>
+                            <div id="satellite-polar-thumbs" class="hidden">
+                                <div id="satellite-polar-grid" class="satellite-image-grid"></div>
+                            </div>
+                        </div>
+                    </section>
 
                     <!-- Sunrise / Daylight Card -->
                     <div class="glass-card p-6">
@@ -951,18 +966,6 @@
 
     <script>
         // --- CONFIGURATION ---
-        const PROFILE_STORAGE_KEY = 'ecowitt-dashboard-profile-v1';
-        const LOCAL_TREND_STORAGE_KEY = 'ecowitt-dashboard-local-trend-v1';
-        const WU_API_BASE = 'https://api.weather.com';
-        const CEFAS_API_BASE = 'https://wavenet-api.cefas.co.uk/api';
-        const WU_RADIUS_MILES = 100;
-        const WU_LOCAL_RADIUS_MILES = 20;
-        const WU_MIN_STATION_SPACING_MILES = 10;
-        const WU_STATION_LIMIT = 24;
-        const CEFAS_RADIUS_MILES = 100;
-        const CEFAS_BUOY_LIMIT = 12;
-        const GEMINI_MODEL = 'gemini-2.5-flash-lite';
-
         const CONFIG = {
             USE_MOCK_DATA: false, 
             USE_BACKEND_PROXY: true,
@@ -977,9 +980,9 @@
             ],
             REALTIME_PATH: '/api/v3/device/real_time',
             HISTORY_PATH: '/api/v3/device/history',
-            APP_KEY: '',
-            API_KEY: '',
-            MAC: '',
+            APP_KEY: 'DA7AE0CAB445FB03076C02F8DE48E96E',
+            API_KEY: 'e9da65f9-f24d-4368-80fa-432c51e01f23',
+            MAC: '9C:9E:6E:31:48:E4',
             REFRESH_INTERVAL_MS: 30000 // 30 seconds
         };
 
@@ -988,13 +991,11 @@
         let rawData = null;
         let rawHistData = null;
         let refreshTimer = null;
-        let dashboardStarted = false;
         let hasFastPrefill = false;
         let aiForecastInFlight = false;
         let aiForecastLastSuccessAt = 0;
         let histCharts = {};
         let miniTrendChart = null;
-        let appProfile = loadStoredProfile();
         const currentOverlay = {
             tempC: null,
             humidity: null,
@@ -1005,28 +1006,12 @@
         };
 
         // Elements
-        const stationTitleEl = document.getElementById('station-title');
-        const settingsToggleBtn = document.getElementById('settings-toggle-btn');
-        const settingsPanel = document.getElementById('settings-panel');
-        const settingsForm = document.getElementById('settings-form');
-        const appKeyInput = document.getElementById('app-key-input');
-        const apiKeyInput = document.getElementById('api-key-input');
-        const macInput = document.getElementById('mac-input');
-        const wuApiKeyInput = document.getElementById('wu-api-key-input');
-        const latInput = document.getElementById('lat-input');
-        const lonInput = document.getElementById('lon-input');
-        const geminiApiKeyInput = document.getElementById('gemini-api-key-input');
-        const useLocationBtn = document.getElementById('use-location-btn');
-        const resetSettingsBtn = document.getElementById('reset-settings-btn');
-        const profileStatusEl = document.getElementById('profile-status');
         const refreshBtn = document.getElementById('refresh-btn');
         const refreshIcon = document.getElementById('refresh-icon');
         const loader = document.getElementById('loader');
         
-        const tabSetup = document.getElementById('tab-setup');
         const tabLive = document.getElementById('tab-live');
         const tabHistoric = document.getElementById('tab-historic');
-        const viewSetup = document.getElementById('view-setup');
         const viewLive = document.getElementById('view-live');
         const viewHistoric = document.getElementById('view-historic');
         const histDateInput = document.getElementById('hist-date');
@@ -1076,287 +1061,9 @@
         const wuAvgPressureSubEl = document.getElementById('wu-avg-pressure-sub');
         const wuAvgRainEl = document.getElementById('wu-avg-rain');
         const wuAvgRainSubEl = document.getElementById('wu-avg-rain-sub');
-
-        function loadStoredProfile() {
-            try {
-                return {
-                    appKey: '',
-                    apiKey: '',
-                    mac: '',
-                    wuApiKey: '',
-                    geminiApiKey: '',
-                    lat: '',
-                    lon: '',
-                    ...JSON.parse(localStorage.getItem(PROFILE_STORAGE_KEY) || '{}')
-                };
-            } catch (err) {
-                return { appKey: '', apiKey: '', mac: '', wuApiKey: '', geminiApiKey: '', lat: '', lon: '' };
-            }
-        }
-
-        function isStandaloneApp() {
-            return Boolean(window.Capacitor?.isNativePlatform?.())
-                || window.location.protocol === 'capacitor:'
-                || window.location.protocol === 'file:'
-                || window.location.hostname === 'localhost'
-                || window.location.hostname === '127.0.0.1';
-        }
-
-        function backendBases() {
-            return CONFIG.BACKEND_API_CANDIDATE_BASES;
-        }
-
-        function buildUrl(url, paramsObj = {}) {
-            const params = new URLSearchParams();
-            Object.entries(paramsObj).forEach(([key, value]) => {
-                if (value !== undefined && value !== null && value !== '') params.set(key, value);
-            });
-            const query = params.toString();
-            return query ? `${url}${url.includes('?') ? '&' : '?'}${query}` : url;
-        }
-
-        async function httpGetJson(url, paramsObj = {}) {
-            const fullUrl = buildUrl(url, paramsObj);
-            const capacitorHttp = window.Capacitor?.Plugins?.CapacitorHttp;
-            if (capacitorHttp?.get) {
-                const res = await capacitorHttp.get({ url: fullUrl });
-                if (res.status < 200 || res.status >= 300) throw new Error(`HTTP ${res.status}`);
-                return typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
-            }
-            const res = await fetch(fullUrl);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            return await res.json();
-        }
-
-        async function httpPostJson(url, bodyObj = {}, paramsObj = {}) {
-            const fullUrl = buildUrl(url, paramsObj);
-            const capacitorHttp = window.Capacitor?.Plugins?.CapacitorHttp;
-            if (capacitorHttp?.post) {
-                const res = await capacitorHttp.post({
-                    url: fullUrl,
-                    headers: { 'Content-Type': 'application/json' },
-                    data: bodyObj
-                });
-                if (res.status < 200 || res.status >= 300) throw new Error(`HTTP ${res.status}`);
-                return typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
-            }
-            const res = await fetch(fullUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(bodyObj)
-            });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            return await res.json();
-        }
-
-        function haversineKm(lat1, lon1, lat2, lon2) {
-            const R = 6371;
-            const toRad = (v) => Number(v) * Math.PI / 180;
-            const dLat = toRad(lat2 - lat1);
-            const dLon = toRad(lon2 - lon1);
-            const p1 = toRad(lat1);
-            const p2 = toRad(lat2);
-            const a = Math.sin(dLat / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dLon / 2) ** 2;
-            return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
-        }
-
-        function destinationPoint(lat, lon, bearingDeg, distanceKm) {
-            const R = 6371;
-            const p1 = lat * Math.PI / 180;
-            const l1 = lon * Math.PI / 180;
-            const theta = bearingDeg * Math.PI / 180;
-            const delta = distanceKm / R;
-            const p2 = Math.asin(Math.sin(p1) * Math.cos(delta) + Math.cos(p1) * Math.sin(delta) * Math.cos(theta));
-            const l2 = l1 + Math.atan2(
-                Math.sin(theta) * Math.sin(delta) * Math.cos(p1),
-                Math.cos(delta) - Math.sin(p1) * Math.sin(p2)
-            );
-            return [p2 * 180 / Math.PI, l2 * 180 / Math.PI];
-        }
-
-        function bearingDeg(lat1, lon1, lat2, lon2) {
-            const p1 = lat1 * Math.PI / 180;
-            const p2 = lat2 * Math.PI / 180;
-            const dLon = (lon2 - lon1) * Math.PI / 180;
-            const y = Math.sin(dLon) * Math.cos(p2);
-            const x = Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dLon);
-            return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
-        }
-
-        function compassOctant(dir) {
-            const arr = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
-            return arr[Math.floor((Number(dir) / 45) + 0.5) % 8];
-        }
-
-        function numOrNull(value) {
-            const n = parseFloat(value);
-            return Number.isFinite(n) ? n : null;
-        }
-
-        function saveStoredProfile() {
-            localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(appProfile));
-        }
-
-        function hasEcowittProfile() {
-            return Boolean(appProfile.appKey && appProfile.apiKey && appProfile.mac);
-        }
-
-        function hasLocationProfile() {
-            return Number.isFinite(parseFloat(appProfile.lat)) && Number.isFinite(parseFloat(appProfile.lon));
-        }
-
-        function applyProfileToConfig() {
-            CONFIG.APP_KEY = appProfile.appKey || '';
-            CONFIG.API_KEY = appProfile.apiKey || '';
-            CONFIG.MAC = appProfile.mac || '';
-            if (stationTitleEl) {
-                stationTitleEl.textContent = appProfile.mac ? `Ecowitt Station ${appProfile.mac}` : 'Ecowitt Station';
-            }
-        }
-
-        function buildProfileEndpoint(path, extraParams = {}) {
-            const params = new URLSearchParams();
-            Object.entries(extraParams).forEach(([key, value]) => {
-                if (value !== undefined && value !== null && value !== '') params.set(key, value);
-            });
-            if (hasEcowittProfile()) {
-                params.set('application_key', appProfile.appKey);
-                params.set('api_key', appProfile.apiKey);
-                params.set('mac', appProfile.mac);
-            }
-            if (appProfile.wuApiKey) params.set('wu_api_key', appProfile.wuApiKey);
-            if (hasLocationProfile()) {
-                params.set('lat', appProfile.lat);
-                params.set('lon', appProfile.lon);
-            }
-            const query = params.toString();
-            return query ? `${path}?${query}` : path;
-        }
-
-        function setSettingsFormFromProfile() {
-            if (appKeyInput) appKeyInput.value = appProfile.appKey || '';
-            if (apiKeyInput) apiKeyInput.value = appProfile.apiKey || '';
-            if (macInput) macInput.value = appProfile.mac || '';
-            if (wuApiKeyInput) wuApiKeyInput.value = appProfile.wuApiKey || '';
-            if (geminiApiKeyInput) geminiApiKeyInput.value = appProfile.geminiApiKey || '';
-            if (latInput) latInput.value = appProfile.lat || '';
-            if (lonInput) lonInput.value = appProfile.lon || '';
-        }
-
-        function setProfileStatus(message, tone = 'info') {
-            if (!profileStatusEl) return;
-            profileStatusEl.textContent = message;
-            profileStatusEl.className = tone === 'error'
-                ? 'text-sm text-red-300 mt-1'
-                : tone === 'ok'
-                    ? 'text-sm text-green-300 mt-1'
-                    : 'text-sm text-blue-300 mt-1';
-        }
-
-        function refreshProfileUi() {
-            setSettingsFormFromProfile();
-            applyProfileToConfig();
-            if (!hasEcowittProfile()) {
-                setProfileStatus('Enter your three Ecowitt details to show your own station.', 'info');
-                return;
-            }
-            if (!appProfile.wuApiKey) {
-                setProfileStatus('Ecowitt saved. Add a Weather Underground API key for nearby PWS stations.', 'info');
-                return;
-            }
-            if (!appProfile.geminiApiKey) {
-                setProfileStatus('Weather keys saved. Add a Gemini API key for AI forecast text.', 'info');
-                return;
-            }
-            if (!hasLocationProfile()) {
-                setProfileStatus('Keys saved. Use GPS so WU stations and marine buoys can be local.', 'info');
-                return;
-            }
-            setProfileStatus('Profile saved. Your station, local PWS network, and marine range are ready.', 'ok');
-        }
-
-        async function updateGpsLocation() {
-            setProfileStatus('Requesting GPS location...', 'info');
-            const applyPosition = (coords) => {
-                appProfile.lat = coords.latitude.toFixed(6);
-                appProfile.lon = coords.longitude.toFixed(6);
-                saveStoredProfile();
-                refreshProfileUi();
-                updateWuStations(true);
-                updateCefasBuoys(true);
-                updateNowcast();
-            };
-            const capacitorGeo = window.Capacitor?.Plugins?.Geolocation;
-            if (capacitorGeo?.getCurrentPosition) {
-                try {
-                    if (capacitorGeo.requestPermissions) {
-                        await capacitorGeo.requestPermissions({ permissions: ['location'] });
-                    }
-                    const pos = await capacitorGeo.getCurrentPosition({
-                        enableHighAccuracy: true,
-                        timeout: 15000,
-                        maximumAge: 10 * 60 * 1000
-                    });
-                    applyPosition(pos.coords);
-                    return;
-                } catch (err) {
-                    setProfileStatus(`GPS unavailable: ${err.message || err}`, 'error');
-                    return;
-                }
-            }
-            if (!navigator.geolocation) {
-                setProfileStatus('GPS is not available in this browser or WebView.', 'error');
-                return;
-            }
-            navigator.geolocation.getCurrentPosition(
-                (pos) => applyPosition(pos.coords),
-                (err) => setProfileStatus(`GPS unavailable: ${err.message}`, 'error'),
-                { enableHighAccuracy: true, timeout: 15000, maximumAge: 10 * 60 * 1000 }
-            );
-        }
-
-        function initProfileUi() {
-            refreshProfileUi();
-            if (settingsToggleBtn) {
-                settingsToggleBtn.addEventListener('click', () => setActiveTab('setup'));
-            }
-            if (settingsForm) {
-                settingsForm.addEventListener('submit', async (event) => {
-                    event.preventDefault();
-                    const wasStarted = dashboardStarted;
-                    appProfile = {
-                        appKey: appKeyInput ? appKeyInput.value.trim() : '',
-                        apiKey: apiKeyInput ? apiKeyInput.value.trim() : '',
-                        mac: macInput ? macInput.value.trim() : '',
-                        wuApiKey: wuApiKeyInput ? wuApiKeyInput.value.trim() : '',
-                        geminiApiKey: geminiApiKeyInput ? geminiApiKeyInput.value.trim() : '',
-                        lat: latInput ? latInput.value.trim() : '',
-                        lon: lonInput ? lonInput.value.trim() : ''
-                    };
-                    saveStoredProfile();
-                    refreshProfileUi();
-                    setActiveTab('live');
-                    await startDashboard();
-                    if (wasStarted) fetchWeatherData(false);
-                    updateWuStations(true);
-                    updateCefasBuoys(true);
-                    updateNowcast();
-                });
-            }
-            if (useLocationBtn) useLocationBtn.addEventListener('click', updateGpsLocation);
-            if (resetSettingsBtn) {
-                resetSettingsBtn.addEventListener('click', () => {
-                    localStorage.removeItem(PROFILE_STORAGE_KEY);
-                    appProfile = loadStoredProfile();
-                    refreshProfileUi();
-                });
-            }
-        }
-
         // Sunrise / Sunset (longitude + equation-of-time corrected)
         function calcSunTimes() {
-            const LAT = Number.isFinite(parseFloat(appProfile.lat)) ? parseFloat(appProfile.lat) : 53.75;
-            const LON = Number.isFinite(parseFloat(appProfile.lon)) ? parseFloat(appProfile.lon) : -1.52;
+            const LAT = 53.75, LON = -1.52;
             const now = new Date();
             const startOfYear = new Date(now.getFullYear(), 0, 0);
             const doy = Math.floor((now - startOfYear) / 86400000);
@@ -1412,6 +1119,7 @@
                 safeSetText('sun-sunset-dir', Math.round(st.sunsetAzDeg) + '° ' + wuTrendIcon(st.sunsetAzDeg));
                 renderScale('scale-daylight', st.daylightHours, 7.0, 17.5, SCALES.uv);
             }
+            drawSunArc(st);
 
             const now = new Date();
             let target, label;
@@ -1429,83 +1137,7 @@
         }
 
         // Mini 24h Trend Chart
-        function readLocalTrendSamples() {
-            try {
-                const rows = JSON.parse(localStorage.getItem(LOCAL_TREND_STORAGE_KEY) || '[]');
-                const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-                return rows.filter((row) => Number.isFinite(row.t) && row.t >= cutoff);
-            } catch (_) {
-                return [];
-            }
-        }
-
-        function recordLocalTrendSnapshot() {
-            if (!isStandaloneApp() || !rawData?.data) return;
-            const d = rawData.data;
-            const tempF = numOrNull(d.outdoor?.temperature?.value);
-            const rainRateInHr = numOrNull(d.rainfall?.rain_rate?.value);
-            if (!Number.isFinite(tempF) && !Number.isFinite(rainRateInHr)) return;
-            const rows = readLocalTrendSamples();
-            const now = Date.now();
-            const last = rows[rows.length - 1];
-            if (last && now - last.t < 60 * 1000) {
-                last.temp_f = tempF;
-                last.rain_rate_inhr = rainRateInHr;
-            } else {
-                rows.push({ t: now, temp_f: tempF, rain_rate_inhr: rainRateInHr });
-            }
-            localStorage.setItem(LOCAL_TREND_STORAGE_KEY, JSON.stringify(rows.slice(-288)));
-        }
-
-        function renderStandaloneMiniTrendChart() {
-            const rows = readLocalTrendSamples();
-            const sourceRows = rows.length ? rows : (rawData?.data ? [{
-                t: Date.now(),
-                temp_f: numOrNull(rawData.data.outdoor?.temperature?.value),
-                rain_rate_inhr: numOrNull(rawData.data.rainfall?.rain_rate?.value),
-            }] : []);
-            if (!sourceRows.length) return;
-            const labels = sourceRows.map((row) => new Date(row.t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-            const tempData = sourceRows.map((row) => Number.isFinite(row.temp_f) ? fToC(row.temp_f) : null);
-            const rainData = sourceRows.map((row) => Number.isFinite(row.rain_rate_inhr) ? inToMm(row.rain_rate_inhr) : null);
-            const ctx = document.getElementById('mini-trend-chart');
-            if (!ctx) return;
-            if (miniTrendChart) miniTrendChart.destroy();
-            miniTrendChart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels,
-                    datasets: [
-                        {
-                            type: 'line', label: 'Temp (Â°C)', data: tempData,
-                            borderColor: '#fb7185', backgroundColor: '#fb718533',
-                            borderWidth: 2, pointRadius: labels.length <= 1 ? 3 : 0, tension: 0.3,
-                            yAxisID: 'y', fill: true,
-                        },
-                        {
-                            type: 'bar', label: 'Rain (mm/hr)', data: rainData,
-                            backgroundColor: 'rgba(96,165,250,0.6)', yAxisID: 'y1',
-                        },
-                    ],
-                },
-                options: {
-                    responsive: true, maintainAspectRatio: false,
-                    interaction: { mode: 'index', intersect: false },
-                    plugins: { legend: { labels: { color: '#cbd5e1', boxWidth: 12, font: { size: 10 } } } },
-                    scales: {
-                        x: { display: labels.length > 1, ticks: { color: '#93c5fd', maxTicksLimit: 6, font: { size: 10 } }, grid: { display: false } },
-                        y: { position: 'left', ticks: { color: '#fb7185', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.06)' } },
-                        y1: { position: 'right', beginAtZero: true, ticks: { color: '#60a5fa', font: { size: 10 } }, grid: { display: false } },
-                    },
-                },
-            });
-        }
-
         async function updateMiniTrendChart() {
-            if (isStandaloneApp()) {
-                renderStandaloneMiniTrendChart();
-                return;
-            }
             if (!CONFIG.USE_BACKEND_PROXY || window.location.protocol === 'file:') return;
             try {
                 const res = await fetchBackendJson('/api/snapshots?limit=288');
@@ -1673,6 +1305,17 @@
         const nowcastUpwindSectorEl = document.getElementById('nowcast-upwind-sector');
         const nowcastUpwindRainEl = document.getElementById('nowcast-upwind-rain');
         const nowcastEtaEl = document.getElementById('nowcast-eta');
+        const capeRiskBadgeEl = document.getElementById('cape-risk-badge');
+        const capeAssessmentEl = document.getElementById('cape-assessment');
+        const capeCurrentEl = document.getElementById('cape-current');
+        const capeCinEl = document.getElementById('cape-cin');
+        const capePeak24hEl = document.getElementById('cape-peak-24h');
+        const capePeak24hTimeEl = document.getElementById('cape-peak-24h-time');
+        const capeWh57StrikesEl = document.getElementById('cape-wh57-strikes');
+        const capeWh57DistEl = document.getElementById('cape-wh57-dist');
+        const capeHourlyBarsEl = document.getElementById('cape-hourly-bars');
+        const capeBarStartEl = document.getElementById('cape-bar-start');
+        const capeBarEndEl = document.getElementById('cape-bar-end');
         const liveOnlySections = document.querySelectorAll('.live-only');
         
         // Loader elements
@@ -1833,7 +1476,9 @@
             for (const baseDomain of CONFIG.API_BASE_DOMAINS) {
                 const apiUrl = buildApiUrl(baseDomain, path, paramsObj);
                 try {
-                    return await httpGetJson(apiUrl);
+                    const res = await fetch(apiUrl);
+                    if (!res.ok) throw new Error(`Status ${res.status}`);
+                    return await res.json();
                 } catch (err) {
                     failures.push(`${baseDomain}: ${err.message}`);
                 }
@@ -1855,7 +1500,7 @@
 
         async function fetchBackendJson(endpointPath) {
             const failures = [];
-            for (const base of backendBases()) {
+            for (const base of CONFIG.BACKEND_API_CANDIDATE_BASES) {
                 const url = `${base}${endpointPath}`;
                 try {
                     const res = await fetch(url);
@@ -1871,7 +1516,7 @@
 
         async function postBackend(endpointPath) {
             const failures = [];
-            for (const base of backendBases()) {
+            for (const base of CONFIG.BACKEND_API_CANDIDATE_BASES) {
                 const url = `${base}${endpointPath}`;
                 try {
                     const res = await fetch(url, { method: 'POST' });
@@ -1916,13 +1561,12 @@
                     await new Promise(r => setTimeout(r, 800));
                     throw new Error("Simulation mode disabled by user.");
                 } else {
-                    const shouldUseBackend = CONFIG.USE_BACKEND_PROXY && !isStandaloneApp();
+                    const shouldUseBackend = CONFIG.USE_BACKEND_PROXY && window.location.protocol !== 'file:';
                     if (shouldUseBackend) {
                         try {
-                            rawData = await fetchBackendJson(buildProfileEndpoint('/api/current', { save: 1 }));
+                            rawData = await fetchBackendJson('/api/current?save=1');
                         } catch (backendErr) {
                             console.warn('Backend unavailable, falling back to direct Ecowitt:', backendErr.message);
-                            if (!hasEcowittProfile()) throw backendErr;
                             rawData = await fetchEcowitt(CONFIG.REALTIME_PATH, {
                                 application_key: CONFIG.APP_KEY,
                                 api_key: CONFIG.API_KEY,
@@ -1931,7 +1575,6 @@
                             });
                         }
                     } else {
-                        if (!hasEcowittProfile()) throw new Error("Enter your Ecowitt Application Key, API Key and station MAC in Setup.");
                         rawData = await fetchEcowitt(CONFIG.REALTIME_PATH, {
                             application_key: CONFIG.APP_KEY,
                             api_key: CONFIG.API_KEY,
@@ -1946,9 +1589,7 @@
                 }
                 
                 updateDOM();
-                recordLocalTrendSnapshot();
                 updateStatsFromDatabase();
-                updateMiniTrendChart();
                 if (!isAutoRefresh) updateAiForecast(true);
                 safeSetText('last-updated', `Updated: ${new Date().toLocaleTimeString()}`);
                 
@@ -2001,9 +1642,7 @@
         }
 
         async function fastPrefillFromDatabase() {
-            if (isStandaloneApp()) return;
             if (!CONFIG.USE_BACKEND_PROXY || window.location.protocol === 'file:') return;
-            if (hasEcowittProfile()) return;
             try {
                 const stats = await fetchBackendJson('/api/stats?hours=24');
                 if (stats?.status !== 'ok' || !stats.latest) return;
@@ -2231,21 +1870,8 @@
             updateHistDOM();
         }
         async function updateStatsFromDatabase() {
-            if (isStandaloneApp()) {
-                if (statsLastAgeEl) statsLastAgeEl.textContent = 'Local app mode';
-                return;
-            }
             if (!CONFIG.USE_BACKEND_PROXY || window.location.protocol === 'file:') {
                 if (statsLastAgeEl) statsLastAgeEl.textContent = 'Last saved: backend not connected';
-                return;
-            }
-            if (hasEcowittProfile()) {
-                if (statsTempHiLoEl) statsTempHiLoEl.textContent = '--';
-                if (statsTempAvgEl) statsTempAvgEl.textContent = '--';
-                if (statsWindMaxEl) statsWindMaxEl.textContent = '--';
-                if (statsHumidityAvgEl) statsHumidityAvgEl.textContent = '--';
-                if (statsPointsEl) statsPointsEl.textContent = '--';
-                if (statsLastAgeEl) statsLastAgeEl.textContent = 'Last saved: custom station snapshots stay private';
                 return;
             }
             try {
@@ -2288,7 +1914,7 @@
         }
 
         function showAiForecastLoading() {
-            if (aiStatusEl) aiStatusEl.textContent = 'Please wait, analysing weather data...';
+            if (aiStatusEl) aiStatusEl.textContent = 'Please wait, analysing weather data and satellite images...';
             if (aiModelEl) aiModelEl.textContent = 'Model: analysing...';
             if (aiSummary24El) aiSummary24El.textContent = 'Analysing recent observations...';
             if (aiForecast24El) aiForecast24El.textContent = 'Building forecast...';
@@ -2297,87 +1923,9 @@
             if (aiConfidenceEl) aiConfidenceEl.textContent = 'Calculating...';
         }
 
-        async function updateGeminiForecast(force = false) {
-            if (!appProfile.geminiApiKey) {
-                if (aiModelEl) aiModelEl.textContent = 'Model: Gemini';
-                if (aiStatusEl) aiStatusEl.textContent = 'Enter your Gemini API key in Setup for AI forecast text.';
-                return;
-            }
-            if (!rawData?.data) {
-                if (aiStatusEl) aiStatusEl.textContent = 'AI forecast will run after live station data loads.';
-                return;
-            }
-            const now = Date.now();
-            if (!force && (aiForecastInFlight || (aiForecastLastSuccessAt && (now - aiForecastLastSuccessAt) < 10 * 60 * 1000))) {
-                return;
-            }
-            aiForecastInFlight = true;
-            try {
-                showAiForecastLoading();
-                const compactCurrent = {
-                    outdoor: rawData.data.outdoor || {},
-                    wind: rawData.data.wind || {},
-                    rainfall: rawData.data.rainfall || {},
-                    pressure: rawData.data.pressure || {},
-                    solar_and_uvi: rawData.data.solar_and_uvi || rawData.data.light || {},
-                    lightning: rawData.data.lightning || {},
-                    soil: rawData.data.soil_ch1 || {}
-                };
-                const prompt = `You are writing a concise weather-station forecast for a mobile dashboard.
-Use the user's current Ecowitt station data and any nearby station/marine context.
-Return only valid JSON with these keys: summary_24h, forecast_24h, comfort_outlook, risks, confidence.
-risks must be an array of short strings. Mention uncertainty clearly when only live data is available.
-
-Context:
-${JSON.stringify({
-                    current: compactCurrent,
-                    location: hasLocationProfile() ? { lat: appProfile.lat, lon: appProfile.lon } : null,
-                    generated_at: new Date().toISOString()
-                })}`;
-                const res = await httpPostJson(
-                    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
-                    {
-                        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-                        generationConfig: { responseMimeType: 'application/json' }
-                    },
-                    { key: appProfile.geminiApiKey }
-                );
-                const text = res?.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('').trim();
-                if (!text) throw new Error('Gemini returned no text');
-                const ai = JSON.parse(text);
-                if (aiModelEl) aiModelEl.textContent = `Model: ${GEMINI_MODEL}`;
-                if (aiSummary24El) aiSummary24El.textContent = ai.summary_24h || '--';
-                if (aiForecast24El) aiForecast24El.textContent = ai.forecast_24h || '--';
-                if (aiComfortEl) aiComfortEl.textContent = ai.comfort_outlook || '--';
-                if (aiConfidenceEl) aiConfidenceEl.textContent = ai.confidence || '--';
-                if (aiRisksEl) aiRisksEl.textContent = Array.isArray(ai.risks) ? (ai.risks.join(', ') || 'None highlighted') : (ai.risks || '--');
-                if (aiStatusEl) aiStatusEl.textContent = 'Direct Gemini forecast loaded from your API key.';
-                aiForecastLastSuccessAt = Date.now();
-            } catch (err) {
-                if (aiStatusEl) aiStatusEl.textContent = `Gemini forecast unavailable: ${err.message}`;
-                if (aiModelEl) aiModelEl.textContent = `Model: ${GEMINI_MODEL}`;
-                console.error('Direct Gemini forecast error:', err);
-            } finally {
-                aiForecastInFlight = false;
-            }
-        }
-
         async function updateAiForecast(force = false) {
-            if (isStandaloneApp()) {
-                return await updateGeminiForecast(force);
-            }
             if (!CONFIG.USE_BACKEND_PROXY || window.location.protocol === 'file:') {
                 if (aiStatusEl) aiStatusEl.textContent = 'AI forecast unavailable in file mode.';
-                return;
-            }
-            if (hasEcowittProfile()) {
-                if (aiModelEl) aiModelEl.textContent = 'Model: custom station mode';
-                if (aiStatusEl) aiStatusEl.textContent = 'AI forecast is paused for custom stations because this shared backend does not store your private station history.';
-                if (aiSummary24El) aiSummary24El.textContent = '--';
-                if (aiForecast24El) aiForecast24El.textContent = '--';
-                if (aiComfortEl) aiComfortEl.textContent = '--';
-                if (aiRisksEl) aiRisksEl.textContent = '--';
-                if (aiConfidenceEl) aiConfidenceEl.textContent = '--';
                 return;
             }
             const now = Date.now();
@@ -2418,10 +1966,6 @@ ${JSON.stringify({
         }
 
         async function updateSatelliteImage(force = false) {
-            if (isStandaloneApp()) {
-                if (satelliteStatusEl) satelliteStatusEl.textContent = 'Satellite image unavailable in local app mode.';
-                return;
-            }
             if (!CONFIG.USE_BACKEND_PROXY || window.location.protocol === 'file:') {
                 if (satelliteStatusEl) satelliteStatusEl.textContent = 'Satellite image unavailable in file mode.';
                 return;
@@ -2433,6 +1977,8 @@ ${JSON.stringify({
                 const capture = res.capture || {};
                 const image = res.image || {};
                 const allImages = Array.isArray(res.images) ? res.images : [];
+                // Backend now returns only weather images in res.images and
+                // polar trajectory charts separately in res.polar_images.
                 const pickImage = (needle, fallback = null) => {
                     return allImages.find((item) => item.filename && item.filename.includes(needle)) || fallback;
                 };
@@ -2457,6 +2003,25 @@ ${JSON.stringify({
                 if (satelliteLinkSecondaryEl && secondaryImage.url) satelliteLinkSecondaryEl.href = secondaryImage.url;
                 if (satelliteCaptionPrimaryEl) satelliteCaptionPrimaryEl.textContent = primaryImage.enhancement || primaryImage.filename || '--';
                 if (satelliteCaptionSecondaryEl) satelliteCaptionSecondaryEl.textContent = secondaryImage.enhancement || secondaryImage.filename || '--';
+
+                // Polar trajectory thumbnails
+                const polarImages = Array.isArray(res.polar_images) ? res.polar_images : [];
+                const polarRow = document.getElementById('satellite-polar-row');
+                const polarGrid = document.getElementById('satellite-polar-grid');
+                if (polarRow && polarGrid) {
+                    if (polarImages.length > 0) {
+                        polarRow.classList.remove('hidden');
+                        polarGrid.innerHTML = polarImages.map((p) => `
+                            <div class="satellite-frame">
+                                <a href="${p.url || '#'}" target="_blank" rel="noopener">
+                                    <img src="${p.proxy_url || p.url}" alt="${p.enhancement || 'Pass trajectory'}" loading="lazy" style="opacity:0.85">
+                                </a>
+                                <div class="satellite-caption">${p.enhancement || p.filename || '--'}</div>
+                            </div>`).join('');
+                    } else {
+                        polarRow.classList.add('hidden');
+                    }
+                }
                 if (satelliteStatusEl) {
                     satelliteStatusEl.textContent = res.cached ? 'Latest satellite capture loaded (cached).' : 'Latest satellite capture loaded.';
                 }
@@ -2472,175 +2037,14 @@ ${JSON.stringify({
             return arr[Math.floor((dir / 22.5) + 0.5) % 16];
         }
 
-        async function wuNearSearch(lat, lon) {
-            try {
-                const json = await httpGetJson(`${WU_API_BASE}/v3/location/near`, {
-                    geocode: `${lat},${lon}`,
-                    product: 'pws',
-                    format: 'json',
-                    apiKey: appProfile.wuApiKey
-                });
-                const loc = json.location || {};
-                const ids = loc.stationId || [];
-                const names = loc.stationName || [];
-                const lats = loc.latitude || [];
-                const lons = loc.longitude || [];
-                return ids.map((id, i) => ({ station_id: id, name: names[i], lat: lats[i], lon: lons[i] }));
-            } catch (err) {
-                console.warn('WU near lookup failed:', err.message);
-                return [];
-            }
-        }
-
-        async function fetchWuNearbyDirect(force = false) {
-            const centerLat = parseFloat(appProfile.lat);
-            const centerLon = parseFloat(appProfile.lon);
-            const radiusKm = WU_RADIUS_MILES * 1.60934;
-            const probePoints = [[centerLat, centerLon]];
-            [[0.20, 6], [0.45, 8], [0.70, 10], [0.95, 14]].forEach(([frac, count]) => {
-                for (let i = 0; i < count; i++) {
-                    probePoints.push(destinationPoint(centerLat, centerLon, i * (360 / count), radiusKm * frac));
-                }
-            });
-
-            const nearResults = await Promise.all(probePoints.map(([lat, lon]) => wuNearSearch(lat, lon)));
-            const candidates = new Map();
-            nearResults.flat().forEach((item) => {
-                if (item.station_id && !candidates.has(item.station_id)) candidates.set(item.station_id, item);
-            });
-
-            let scored = [...candidates.values()].map((info) => {
-                const distKm = haversineKm(centerLat, centerLon, parseFloat(info.lat), parseFloat(info.lon));
-                return { distKm, info };
-            }).filter((item) => Number.isFinite(item.distKm) && item.distKm <= radiusKm)
-              .sort((a, b) => a.distKm - b.distKm);
-            const stationsInRadius = scored.length;
-
-            const minSpacingKm = WU_MIN_STATION_SPACING_MILES * 1.60934;
-            const spaced = [];
-            for (const item of scored) {
-                const lat = parseFloat(item.info.lat);
-                const lon = parseFloat(item.info.lon);
-                if (!spaced.some((sel) => haversineKm(lat, lon, parseFloat(sel.info.lat), parseFloat(sel.info.lon)) < minSpacingKm)) {
-                    spaced.push(item);
-                }
-                if (spaced.length >= WU_STATION_LIMIT) break;
-            }
-
-            const stations = [];
-            for (const { distKm, info } of spaced) {
-                try {
-                    const obsJson = await httpGetJson(`${WU_API_BASE}/v2/pws/observations/current`, {
-                        stationId: info.station_id,
-                        format: 'json',
-                        units: 'm',
-                        apiKey: appProfile.wuApiKey
-                    });
-                    const obs = obsJson.observations?.[0];
-                    if (!obs) continue;
-                    const metric = obs.metric || {};
-                    const obsLat = obs.lat ?? info.lat;
-                    const obsLon = obs.lon ?? info.lon;
-                    const bearing = bearingDeg(centerLat, centerLon, parseFloat(obsLat), parseFloat(obsLon));
-                    stations.push({
-                        station_id: info.station_id,
-                        name: info.name,
-                        distance_km: Number(distKm.toFixed(2)),
-                        distance_mi: Number((distKm / 1.60934).toFixed(2)),
-                        direction_from_centre: wuTrendIcon(bearing),
-                        octant: compassOctant(bearing),
-                        lat: obsLat,
-                        lon: obsLon,
-                        obs_time_local: obs.obsTimeLocal,
-                        neighborhood: obs.neighborhood,
-                        temp_c: numOrNull(metric.temp),
-                        heat_index_c: numOrNull(metric.heatIndex),
-                        dewpt_c: numOrNull(metric.dewpt),
-                        wind_chill_c: numOrNull(metric.windChill),
-                        humidity_pct: numOrNull(obs.humidity),
-                        wind_dir_deg: numOrNull(obs.winddir),
-                        wind_speed_kmh: numOrNull(metric.windSpeed),
-                        wind_gust_kmh: numOrNull(metric.windGust),
-                        pressure_hpa: numOrNull(metric.pressure),
-                        precip_rate_mmhr: numOrNull(metric.precipRate),
-                        precip_total_mm: numOrNull(metric.precipTotal),
-                        uv: numOrNull(obs.uv),
-                        solar_radiation: numOrNull(obs.solarRadiation)
-                    });
-                } catch (err) {
-                    console.warn('WU station observation failed:', info.station_id, err.message);
-                }
-            }
-            stations.sort((a, b) => a.distance_km - b.distance_km);
-
-            const avg = (items, field) => {
-                const vals = items.map((s) => s[field]).filter((v) => Number.isFinite(v));
-                return vals.length ? Number((vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2)) : null;
-            };
-            const summarize = (items) => ({
-                station_count: items.length,
-                temp_c_avg: avg(items, 'temp_c'),
-                humidity_pct_avg: avg(items, 'humidity_pct'),
-                wind_speed_kmh_avg: avg(items, 'wind_speed_kmh'),
-                wind_gust_kmh_avg: avg(items, 'wind_gust_kmh'),
-                wind_gust_kmh_max: Math.max(...items.map((s) => s.wind_gust_kmh).filter((v) => Number.isFinite(v)), NaN),
-                pressure_hpa_avg: avg(items, 'pressure_hpa'),
-                precip_total_mm_avg: avg(items, 'precip_total_mm'),
-                precip_total_mm_max: Math.max(...items.map((s) => s.precip_total_mm).filter((v) => Number.isFinite(v)), NaN),
-                stations_reporting_rain: items.filter((s) => Number.isFinite(s.precip_rate_mmhr) && s.precip_rate_mmhr > 0).length
-            });
-
-            const localStations = stations.filter((s) => s.distance_mi <= WU_LOCAL_RADIUS_MILES);
-            const localSummary = summarize(localStations);
-            localSummary.radius_miles = WU_LOCAL_RADIUS_MILES;
-            const directionalSummary = {};
-            ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'].forEach((oct) => {
-                const items = stations.filter((s) => s.distance_mi > WU_LOCAL_RADIUS_MILES && s.octant === oct);
-                directionalSummary[oct] = {
-                    ...summarize(items),
-                    nearest_distance_mi: Math.min(...items.map((s) => s.distance_mi), NaN),
-                    farthest_distance_mi: Math.max(...items.map((s) => s.distance_mi), NaN)
-                };
-            });
-            return {
-                status: 'ok',
-                source: 'Weather Underground PWS Network',
-                center: { lat: centerLat, lon: centerLon },
-                radius_miles: WU_RADIUS_MILES,
-                local_radius_miles: WU_LOCAL_RADIUS_MILES,
-                cached: false,
-                cache_age_seconds: 0,
-                candidates_found: candidates.size,
-                stations_in_radius: stationsInRadius,
-                station_count: stations.length,
-                stations,
-                local_summary: localSummary,
-                directional_summary: directionalSummary,
-                regional_summary: summarize(stations),
-                updated_at: new Date().toISOString()
-            };
-        }
-
         async function updateWuStations(force = false) {
-            if (!isStandaloneApp() && (!CONFIG.USE_BACKEND_PROXY || window.location.protocol === 'file:')) {
+            if (!CONFIG.USE_BACKEND_PROXY || window.location.protocol === 'file:') {
                 if (wuStatusEl) wuStatusEl.textContent = 'Regional stations unavailable in file mode.';
-                return;
-            }
-            if (!appProfile.wuApiKey) {
-                if (wuStatusEl) wuStatusEl.textContent = 'Enter your Weather Underground API key in Setup.';
-                if (wuStationGridEl) wuStationGridEl.innerHTML = '<div class="wu-station-card text-sm text-blue-200">Weather Underground setup needed.</div>';
-                return;
-            }
-            if (!hasLocationProfile()) {
-                if (wuStatusEl) wuStatusEl.textContent = 'Use GPS in Setup to load local Weather Underground stations.';
-                if (wuStationGridEl) wuStationGridEl.innerHTML = '<div class="wu-station-card text-sm text-blue-200">Location needed for local station lookup.</div>';
                 return;
             }
             try {
                 if (wuStatusEl) wuStatusEl.textContent = 'Loading nearby PWS network data...';
-                const res = isStandaloneApp()
-                    ? await fetchWuNearbyDirect(force)
-                    : await fetchBackendJson(buildProfileEndpoint('/api/wu/nearby', { force: force ? 1 : '' }));
+                const res = await fetchBackendJson(`/api/wu/nearby${force ? '?force=1' : ''}`);
                 if (res.status !== 'ok') throw new Error('Invalid WU response');
                 const summary = res.regional_summary || {};
                 const localSummary = res.local_summary || {};
@@ -2769,96 +2173,14 @@ ${JSON.stringify({
             return `${diffHr}h ago`;
         }
 
-        async function fetchCefasBuoysDirect(force = false) {
-            const centerLat = parseFloat(appProfile.lat);
-            const centerLon = parseFloat(appProfile.lon);
-            const geojson = await httpGetJson(`${CEFAS_API_BASE}/Map/Current`);
-            const scored = [];
-            (geojson.features || []).forEach((feature) => {
-                const coords = feature.geometry?.coordinates || [];
-                const lon = numOrNull(coords[0]);
-                const lat = numOrNull(coords[1]);
-                if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
-                const distMi = haversineKm(centerLat, centerLon, lat, lon) / 1.60934;
-                if (distMi <= CEFAS_RADIUS_MILES) scored.push({ distMi, lat, lon, feature });
-            });
-            scored.sort((a, b) => a.distMi - b.distMi);
-            if (!scored.length) {
-                return {
-                    status: 'not_near_marine_buoys',
-                    message: `Not near sea buoys within ${CEFAS_RADIUS_MILES} miles.`,
-                    radius_miles: CEFAS_RADIUS_MILES,
-                    buoy_count: 0,
-                    buoys: []
-                };
-            }
-            const buoys = scored.slice(0, CEFAS_BUOY_LIMIT).map(({ distMi, lat, lon, feature }) => {
-                const props = feature.properties || {};
-                const results = props.results || {};
-                const resultValue = (key) => {
-                    const val = results[key]?.values?.[0];
-                    const num = parseFloat(val);
-                    return Number.isFinite(num) ? num : null;
-                };
-                const bearing = bearingDeg(centerLat, centerLon, lat, lon);
-                return {
-                    id: props.id,
-                    name: props.title,
-                    provider: props.provider,
-                    distance_mi: Number(distMi.toFixed(1)),
-                    direction_from_centre: wuTrendIcon(bearing),
-                    lat,
-                    lon,
-                    timestamp: props.timestamp,
-                    overdue: Boolean(props.overdue),
-                    wave_height_m: resultValue('Hm0'),
-                    sea_temp_c: resultValue('TEMP'),
-                    wave_period_zero_s: resultValue('Tz'),
-                    wave_period_peak_s: resultValue('Tpeak'),
-                    wave_spread_deg: resultValue('W_SPR'),
-                    wave_direction_deg: resultValue('W_PDIR')
-                };
-            });
-            const avg = (field) => {
-                const vals = buoys.map((b) => b[field]).filter((v) => Number.isFinite(v));
-                return vals.length ? Number((vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2)) : null;
-            };
-            return {
-                status: 'ok',
-                source: 'Cefas WaveNet',
-                radius_miles: CEFAS_RADIUS_MILES,
-                cached: false,
-                cache_age_seconds: 0,
-                buoy_count: buoys.length,
-                buoys,
-                regional_summary: {
-                    wave_height_m_avg: avg('wave_height_m'),
-                    sea_temp_c_avg: avg('sea_temp_c')
-                },
-                updated_at: new Date().toISOString()
-            };
-        }
-
         async function updateCefasBuoys(force = false) {
-            if (!isStandaloneApp() && (!CONFIG.USE_BACKEND_PROXY || window.location.protocol === 'file:')) {
+            if (!CONFIG.USE_BACKEND_PROXY || window.location.protocol === 'file:') {
                 if (cefasStatusEl) cefasStatusEl.textContent = 'Marine buoy data unavailable in file mode.';
-                return;
-            }
-            if (!hasLocationProfile()) {
-                if (cefasStatusEl) cefasStatusEl.textContent = 'Use GPS in Setup to check whether marine buoys are nearby.';
-                if (cefasBuoyGridEl) cefasBuoyGridEl.innerHTML = '<div class="wu-station-card text-sm text-blue-200">Location needed for marine buoy range check.</div>';
                 return;
             }
             try {
                 if (cefasStatusEl) cefasStatusEl.textContent = 'Loading marine buoy data...';
-                const res = isStandaloneApp()
-                    ? await fetchCefasBuoysDirect(force)
-                    : await fetchBackendJson(buildProfileEndpoint('/api/cefas/buoys', { force: force ? 1 : '' }));
-                if (res.status === 'not_near_marine_buoys') {
-                    if (cefasStatusEl) cefasStatusEl.textContent = res.message || 'Not near sea buoys within 100 miles.';
-                    if (cefasBuoyGridEl) cefasBuoyGridEl.innerHTML = '<div class="wu-station-card text-sm text-blue-200">Not near sea buoys within 100 miles.</div>';
-                    return;
-                }
+                const res = await fetchBackendJson(`/api/cefas/buoys${force ? '?force=1' : ''}`);
                 if (res.status !== 'ok') throw new Error('Invalid Cefas response');
                 const buoys = Array.isArray(res.buoys) ? res.buoys : [];
 
@@ -2937,55 +2259,13 @@ ${JSON.stringify({
             'high':           'bg-red-500/20 text-red-200 border-red-400/40',
         };
 
-        function updateLocalNowcast() {
-            const d = rawData?.data || {};
-            const windMph = parseFloat(d.wind?.wind_speed?.value);
-            const gustMph = parseFloat(d.wind?.wind_gust?.value);
-            const rainRate = parseFloat(d.rainfall?.rain_rate?.value);
-            const pressure = parseFloat(d.pressure?.relative?.value);
-            const windDir = parseFloat(d.wind?.wind_direction?.value);
-            const raining = Number.isFinite(rainRate) && rainRate > 0.01;
-            const windy = Number.isFinite(gustMph) && gustMph >= 25;
-            const breezy = Number.isFinite(windMph) && windMph >= 15;
-            let risk = 'low';
-            const parts = [];
-            if (raining && windy) {
-                risk = 'high';
-                parts.push('Rain and strong gusts are being reported by your station');
-            } else if (raining) {
-                risk = 'moderate-high';
-                parts.push('Rain is being reported by your station');
-            } else if (windy) {
-                risk = 'moderate';
-                parts.push('Strong gusts are being reported by your station');
-            } else if (breezy) {
-                risk = 'low-moderate';
-                parts.push('Breezy conditions are being reported by your station');
-            } else {
-                parts.push('No immediate rain or strong-wind signal from your station');
-            }
-            if (nowcastRiskBadgeEl) {
-                nowcastRiskBadgeEl.className = `self-start md:self-auto px-3 py-1.5 text-sm font-semibold rounded-full border ${NOWCAST_RISK_STYLES[risk] || NOWCAST_RISK_STYLES.low}`;
-                nowcastRiskBadgeEl.textContent = risk.charAt(0).toUpperCase() + risk.slice(1).replace('-', ' ') + ' risk';
-            }
-            if (nowcastMessageEl) nowcastMessageEl.textContent = `${parts.join('. ')}. Local app nowcast uses live Ecowitt data only.`;
-            if (nowcastPressureTrendEl) nowcastPressureTrendEl.textContent = Number.isFinite(pressure) ? `${(pressure * 33.8639).toFixed(1)} hPa now` : '--';
-            if (nowcastUpwindSectorEl) nowcastUpwindSectorEl.textContent = Number.isFinite(windDir) ? wuTrendIcon(windDir) : '--';
-            if (nowcastUpwindRainEl) nowcastUpwindRainEl.textContent = raining ? 'At your station' : 'None detected';
-            if (nowcastEtaEl) nowcastEtaEl.textContent = '--';
-        }
-
         async function updateNowcast() {
-            if (isStandaloneApp()) {
-                updateLocalNowcast();
-                return;
-            }
             if (!CONFIG.USE_BACKEND_PROXY || window.location.protocol === 'file:') {
                 if (nowcastMessageEl) nowcastMessageEl.textContent = 'Nowcast unavailable in file mode.';
                 return;
             }
             try {
-                const res = await fetchBackendJson(buildProfileEndpoint('/api/nowcast'));
+                const res = await fetchBackendJson('/api/nowcast');
                 if (res.status !== 'ok') throw new Error('Invalid nowcast response');
 
                 const risk = res.risk_level || 'low';
@@ -3029,6 +2309,96 @@ ${JSON.stringify({
             }
         }
 
+        const CAPE_RISK_STYLES = {
+            'low':            'bg-green-500/20 text-green-200 border-green-400/40',
+            'moderate':       'bg-yellow-500/20 text-yellow-200 border-yellow-400/40',
+            'moderate-capped':'bg-yellow-500/20 text-yellow-200 border-yellow-400/40',
+            'elevated':       'bg-orange-500/20 text-orange-200 border-orange-400/40',
+            'high-capped':    'bg-orange-500/20 text-orange-200 border-orange-400/40',
+            'high':           'bg-red-500/20 text-red-200 border-red-400/40',
+            'unknown':        'bg-gray-500/20 text-gray-300 border-gray-500/30',
+        };
+
+        function capeBarColor(cape) {
+            if (!Number.isFinite(cape)) return '#334155';
+            if (cape < 300)  return '#22c55e';
+            if (cape < 600)  return '#eab308';
+            if (cape < 1000) return '#f97316';
+            if (cape < 2000) return '#ef4444';
+            return '#991b1b';
+        }
+
+        async function updateThunderstormRisk() {
+            if (!CONFIG.USE_BACKEND_PROXY || window.location.protocol === 'file:') return;
+            try {
+                const res = await fetchBackendJson('/api/thunderstorm');
+                if (res.status !== 'ok') throw new Error('Invalid thunderstorm response');
+
+                const risk = res.composite_risk_level || 'unknown';
+                if (capeRiskBadgeEl) {
+                    capeRiskBadgeEl.className = `self-start md:self-auto px-3 py-1.5 text-sm font-semibold rounded-full border ${CAPE_RISK_STYLES[risk] || CAPE_RISK_STYLES['unknown']}`;
+                    capeRiskBadgeEl.textContent = risk.charAt(0).toUpperCase() + risk.slice(1).replace(/-/g,' ') + ' risk';
+                }
+                if (capeAssessmentEl) capeAssessmentEl.textContent = res.assessment || '--';
+
+                if (capeCurrentEl) {
+                    const c = res.cape_current_j_kg;
+                    capeCurrentEl.textContent = Number.isFinite(c) ? `${Math.round(c)} J/kg` : '--';
+                    capeCurrentEl.style.color = capeBarColor(c);
+                }
+                if (capeCinEl) {
+                    const cin = res.cin_current_j_kg;
+                    capeCinEl.textContent = Number.isFinite(cin) ? `${cin > 0 ? '+' : ''}${Math.round(cin)} J/kg` : '--';
+                    capeCinEl.style.color = Number.isFinite(cin) && cin > -50 ? '#fb923c' : '#93c5fd';
+                }
+                if (capePeak24hEl) {
+                    const p = res.peak_cape_24h_j_kg;
+                    capePeak24hEl.textContent = Number.isFinite(p) ? `${Math.round(p)} J/kg` : '--';
+                    capePeak24hEl.style.color = capeBarColor(p);
+                }
+                if (capePeak24hTimeEl && res.peak_cape_24h_time) {
+                    const d = new Date(res.peak_cape_24h_time);
+                    capePeak24hTimeEl.textContent = isNaN(d) ? res.peak_cape_24h_time
+                        : d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}) + ' ' + d.toLocaleDateString([],{weekday:'short'});
+                }
+                if (capeWh57StrikesEl) {
+                    const s = res.wh57_strikes_today;
+                    capeWh57StrikesEl.textContent = Number.isFinite(s) ? `${Math.round(s)} today` : '--';
+                    capeWh57StrikesEl.style.color = res.nearby_lightning ? '#f87171' : res.active_strikes_detected ? '#fb923c' : '';
+                }
+                if (capeWh57DistEl) {
+                    const km = res.wh57_nearest_km;
+                    capeWh57DistEl.textContent = Number.isFinite(km) ? `nearest ${km.toFixed(0)} km` : 'no recent strike';
+                }
+
+                const hours = Array.isArray(res.cape_hours_48h) ? res.cape_hours_48h : [];
+                if (capeHourlyBarsEl && hours.length) {
+                    const maxCape = Math.max(...hours.map(h => h.cape_j_kg || 0), 500);
+                    capeHourlyBarsEl.innerHTML = hours.map((h, i) => {
+                        const cape = h.cape_j_kg || 0;
+                        const hPct = Math.max(2, Math.round((cape / maxCape) * 100));
+                        return `<div style="flex:1;height:${hPct}%;background:${capeBarColor(cape)};opacity:${i===0?1:0.7};border-top:1px solid ${i===0?'#fff':'transparent'}" title="${h.time}: ${Math.round(cape)} J/kg"></div>`;
+                    }).join('');
+                    if (capeBarStartEl && hours[0]) {
+                        const d = new Date(hours[0].time);
+                        capeBarStartEl.textContent = isNaN(d) ? hours[0].time : d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+                    }
+                    if (capeBarEndEl && hours[hours.length-1]) {
+                        const d = new Date(hours[hours.length-1].time);
+                        capeBarEndEl.textContent = isNaN(d) ? hours[hours.length-1].time
+                            : d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}) + ' +1d';
+                    }
+                }
+            } catch (err) {
+                if (capeRiskBadgeEl) {
+                    capeRiskBadgeEl.className = 'self-start md:self-auto px-3 py-1.5 text-sm font-semibold rounded-full bg-gray-500/20 text-gray-300 border border-gray-500/30';
+                    capeRiskBadgeEl.textContent = 'Unavailable';
+                }
+                if (capeAssessmentEl) capeAssessmentEl.textContent = 'Thunderstorm risk unavailable.';
+                console.error('Thunderstorm risk fetch error:', err);
+            }
+        }
+
         // --- Historic Data Logic ---
         async function fetchHistoricData() {
             resetLoader();
@@ -3041,31 +2411,15 @@ ${JSON.stringify({
                     throw new Error("Simulation mode disabled.");
                 } else {
                     const callBacks = 'outdoor.temperature,outdoor.humidity,wind.wind_speed,rainfall.daily,lightning.count,soil_ch1.soilmoisture';
-                    const historyParams = {
+                    const json = await fetchEcowitt(CONFIG.HISTORY_PATH, {
+                        application_key: CONFIG.APP_KEY,
+                        api_key: CONFIG.API_KEY,
+                        mac: CONFIG.MAC,
                         start_date: `${selectedDate} 00:00:00`,
                         end_date: `${selectedDate} 23:59:59`,
                         cycle_type: 'auto',
                         call_back: callBacks
-                    };
-                    let json;
-                    const shouldUseBackend = CONFIG.USE_BACKEND_PROXY && !isStandaloneApp();
-                    if (shouldUseBackend) {
-                        try {
-                            json = await fetchBackendJson(buildProfileEndpoint('/api/history', historyParams));
-                        } catch (backendErr) {
-                            console.warn('Backend history unavailable, falling back to direct Ecowitt:', backendErr.message);
-                            if (!hasEcowittProfile()) throw backendErr;
-                        }
-                    }
-                    if (!json) {
-                        if (!hasEcowittProfile()) throw new Error("Enter your Ecowitt Application Key, API Key and station MAC in Setup.");
-                        json = await fetchEcowitt(CONFIG.HISTORY_PATH, {
-                            application_key: CONFIG.APP_KEY,
-                            api_key: CONFIG.API_KEY,
-                            mac: CONFIG.MAC,
-                            ...historyParams
-                        });
-                    }
+                    });
                     if (json.code !== 0) throw new Error(`API Error: ${json.msg}`);
                     const d = json.data || {};
                     const timestamps = new Set();
@@ -3206,36 +2560,25 @@ ${JSON.stringify({
             histCharts.soil     = buildHistoricChart('chart-soil',       labels, soilData,      currentOverlay.soilMoisture, 'Soil Moisture CH1', '#4ade80', (v) => `${Number(v).toFixed(0)}%`);
         }
 
-        function setActiveTab(tabName) {
-            const isSetup = tabName === 'setup';
-            const isLive = tabName === 'live';
-            const isHistoric = tabName === 'historic';
-            [
-                [tabSetup, isSetup],
-                [tabLive, isLive],
-                [tabHistoric, isHistoric],
-            ].forEach(([tab, active]) => {
-                if (!tab) return;
-                tab.classList.toggle('tab-active', active);
-                tab.classList.toggle('tab-inactive', !active);
-            });
-            if (viewSetup) viewSetup.classList.toggle('hidden', !isSetup);
-            if (viewLive) viewLive.classList.toggle('hidden', !isLive);
-            if (viewHistoric) viewHistoric.classList.toggle('hidden', !isHistoric);
-            if (refreshBtn) refreshBtn.style.display = isLive ? 'flex' : 'none';
-            liveOnlySections.forEach((section) => section.classList.toggle('hidden', !isLive));
-            if (isLive) {
-                updateMiniTrendChart();
-                updateNowcast();
-            }
-        }
-
         // Tab Events
-        if (tabSetup) tabSetup.addEventListener('click', () => setActiveTab('setup'));
-        tabLive.addEventListener('click', () => setActiveTab('live'));
-        tabHistoric.addEventListener('click', () => setActiveTab('historic'));
+        tabLive.addEventListener('click', () => {
+            tabLive.classList.add('tab-active'); tabLive.classList.remove('tab-inactive');
+            tabHistoric.classList.add('tab-inactive'); tabHistoric.classList.remove('tab-active');
+            viewLive.classList.remove('hidden'); viewHistoric.classList.add('hidden');
+            refreshBtn.style.display = 'flex';
+            liveOnlySections.forEach((section) => section.classList.remove('hidden'));
+        });
+
+        tabHistoric.addEventListener('click', () => {
+            tabHistoric.classList.add('tab-active'); tabHistoric.classList.remove('tab-inactive');
+            tabLive.classList.add('tab-inactive'); tabLive.classList.remove('tab-active');
+            viewHistoric.classList.remove('hidden'); viewLive.classList.add('hidden');
+            refreshBtn.style.display = 'none';
+            liveOnlySections.forEach((section) => section.classList.add('hidden'));
+        });
 
         fetchHistBtn.addEventListener('click', fetchHistoricData);
+        if (satelliteRefreshBtn) satelliteRefreshBtn.addEventListener('click', () => updateSatelliteImage(true));
         loaderClose.addEventListener('click', () => { loader.classList.remove('active'); });
         refreshBtn.addEventListener('click', () => { resetTimer(); fetchWeatherData(false); });
 
@@ -3247,35 +2590,26 @@ ${JSON.stringify({
         if (wuRefreshBtn) wuRefreshBtn.addEventListener('click', () => updateWuStations(true));
         if (cefasRefreshBtn) cefasRefreshBtn.addEventListener('click', () => updateCefasBuoys(true));
 
-        async function startDashboard() {
-            if (dashboardStarted) return;
-            dashboardStarted = true;
+        (async () => {
             await fastPrefillFromDatabase();
             fetchWeatherData(false);
             resetTimer();
             updateAiForecast();
             setInterval(updateAiForecast, 30 * 60 * 1000);
+            updateSatelliteImage();
+            setInterval(updateSatelliteImage, 5 * 60 * 1000);
             updateWuStations();
             setInterval(updateWuStations, 10 * 60 * 1000);
             updateCefasBuoys();
             setInterval(updateCefasBuoys, 15 * 60 * 1000);
             updateNowcast();
             setInterval(updateNowcast, 10 * 60 * 1000);
+            updateThunderstormRisk();
+            setInterval(updateThunderstormRisk, 15 * 60 * 1000);
             updateSunTimes();
             setInterval(updateSunTimes, 60 * 1000);
             updateMiniTrendChart();
             setInterval(updateMiniTrendChart, 10 * 60 * 1000);
-        }
-
-        (async () => {
-            initProfileUi();
-            if (hasEcowittProfile()) {
-                setActiveTab('live');
-                await startDashboard();
-            } else {
-                setActiveTab('setup');
-                updateSunTimes();
-            }
         })();
 
     </script>

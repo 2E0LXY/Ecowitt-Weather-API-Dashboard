@@ -61,6 +61,9 @@ CEFAS_RADIUS_MILES = float(os.getenv("CEFAS_RADIUS_MILES", "100"))
 CEFAS_BUOY_LIMIT = max(1, min(20, int(os.getenv("CEFAS_BUOY_LIMIT", "12"))))
 CEFAS_CACHE_TTL_SECONDS = int(os.getenv("CEFAS_CACHE_TTL_SECONDS", "1800"))
 
+CAPE_API_BASE = "https://api.open-meteo.com/v1/forecast"
+CAPE_CACHE_TTL_SECONDS = int(os.getenv("CAPE_CACHE_TTL_SECONDS", "1800"))
+
 STATIC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "static"))
 
 AI_CACHE_TTL_SECONDS = 900
@@ -71,6 +74,7 @@ SATELLITE_CACHE_TTL_SECONDS = 300
 _satellite_cache = {"ts": 0.0, "payload": None}
 _wu_cache = {"ts": 0.0, "payload": None}
 _cefas_cache = {"ts": 0.0, "payload": None}
+_cape_cache = {"ts": 0.0, "payload": None}
 
 
 def db_conn():
@@ -396,6 +400,166 @@ async def fetch_wu_nearby_stations(force=False):
     _wu_cache["payload"] = deepcopy(payload)
     _wu_cache["ts"] = time.time()
     return payload
+
+
+async def fetch_cape_data(force=False):
+    """Fetch CAPE and CIN from Open-Meteo (UKMO Seamless model).
+    Free, no key needed. Raw indices only - no forecast text consumed."""
+    now = time.time()
+    if not force and _cape_cache["payload"] and (now - _cape_cache["ts"] < CAPE_CACHE_TTL_SECONDS):
+        cached = deepcopy(_cape_cache["payload"])
+        cached["cached"] = True
+        cached["cache_age_seconds"] = int(now - _cape_cache["ts"])
+        return cached
+
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            resp = await client.get(
+                CAPE_API_BASE,
+                params={
+                    "latitude": WU_CENTER_LAT,
+                    "longitude": WU_CENTER_LON,
+                    "hourly": "cape,convective_inhibition",
+                    "forecast_days": 2,
+                    "timezone": "Europe/London",
+                    "models": "ukmo_seamless",
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(status_code=502, detail=f"Open-Meteo CAPE HTTP error {exc.response.status_code}") from exc
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail=f"Open-Meteo CAPE request error: {exc}") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail="Open-Meteo CAPE returned invalid JSON") from exc
+
+    hourly = data.get("hourly", {})
+    times  = hourly.get("time", [])
+    capes  = hourly.get("cape", [])
+    cins   = hourly.get("convective_inhibition", [])
+
+    hours = []
+    for t, cape, cin in zip(times, capes, cins):
+        hours.append({
+            "time": t,
+            "cape_j_kg": round(_safe_float(cape) or 0.0, 1),
+            "cin_j_kg": round(_safe_float(cin) or 0.0, 1),
+        })
+
+    from datetime import datetime as _dt
+    now_str = _dt.now().strftime("%Y-%m-%dT%H:00")
+    current_idx = next((i for i, h in enumerate(hours) if h["time"] == now_str), 0)
+    current = hours[current_idx] if hours else {}
+
+    next_24 = hours[current_idx:current_idx + 24]
+    next_48 = hours[current_idx:current_idx + 48]
+
+    def cape_risk_level(cape, cin):
+        if cape is None: return "unknown"
+        if cape < 300: return "low"
+        if cape < 1000: return "moderate"
+        if cape < 2000:
+            return "elevated" if cin > -200 else "moderate-capped"
+        return "high" if cin > -100 else "high-capped"
+
+    peak_24 = max((h["cape_j_kg"] for h in next_24), default=0.0)
+    peak_48 = max((h["cape_j_kg"] for h in next_48), default=0.0)
+    peak_24_hour = next((h for h in next_24 if h["cape_j_kg"] == peak_24), {})
+
+    payload = {
+        "status": "ok",
+        "source": "Open-Meteo / UKMO Seamless (raw atmospheric indices only)",
+        "cached": False,
+        "cache_age_seconds": 0,
+        "current": current,
+        "current_risk_level": cape_risk_level(current.get("cape_j_kg"), current.get("cin_j_kg", 0)),
+        "peak_cape_24h_j_kg": peak_24,
+        "peak_cape_24h_time": peak_24_hour.get("time"),
+        "peak_cape_24h_cin": peak_24_hour.get("cin_j_kg"),
+        "peak_cape_48h_j_kg": peak_48,
+        "hours": next_48,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    _cape_cache["payload"] = deepcopy(payload)
+    _cape_cache["ts"] = time.time()
+    return payload
+
+
+async def compute_thunderstorm_risk():
+    """Combine CAPE/CIN model data with WH57 sensor live strikes.
+    WH57 = ground truth now; CAPE = forward-looking potential.
+    Rule-based, no external forecast text consumed."""
+    cape_data = await fetch_cape_data()
+    current_cape = cape_data.get("current", {})
+    cape = current_cape.get("cape_j_kg", 0.0)
+    cin  = current_cape.get("cin_j_kg", 0.0)
+    risk = cape_data.get("current_risk_level", "unknown")
+
+    wh57_strikes = None
+    wh57_distance_km = None
+    try:
+        station_data = await fetch_current_from_ecowitt()
+        d = station_data.get("data", {})
+        wh57_strikes = to_float(d.get("lightning", {}).get("count", {}).get("value"))
+        dist_mi = to_float(d.get("lightning", {}).get("distance", {}).get("value"))
+        wh57_distance_km = round(dist_mi * 1.60934, 1) if dist_mi is not None else None
+    except Exception:
+        pass
+
+    active_strikes = bool(wh57_strikes and wh57_strikes > 0)
+    nearby_lightning = bool(active_strikes and wh57_distance_km and wh57_distance_km <= 40)
+
+    if nearby_lightning:
+        composite_risk = "high"
+        assessment = (
+            f"Active lightning detected by WH57 ({int(wh57_strikes)} strikes today, "
+            f"nearest {wh57_distance_km}km). CAPE {cape:.0f} J/kg — "
+            f"{'elevated instability supports continued activity' if cape > 500 else 'moderate instability present'}."
+        )
+    elif active_strikes:
+        composite_risk = "elevated" if risk in ("low", "moderate") else risk
+        assessment = (
+            f"Lightning detected by WH57 ({int(wh57_strikes)} strikes today, "
+            f"nearest {wh57_distance_km}km). CAPE {cape:.0f} J/kg, CIN {cin:.0f} J/kg."
+        )
+    elif risk in ("high", "elevated"):
+        composite_risk = risk
+        assessment = (
+            f"No strikes yet but CAPE {cape:.0f} J/kg with CIN {cin:.0f} J/kg — "
+            f"{'uncapped, storms could initiate' if cin > -50 else 'cap weakening, monitor closely'}."
+        )
+    elif risk in ("high-capped", "moderate-capped"):
+        composite_risk = "moderate"
+        assessment = (
+            f"High CAPE ({cape:.0f} J/kg) but strongly inhibited (CIN {cin:.0f} J/kg). "
+            f"Storms suppressed — could fire explosively if cap breaks."
+        )
+    else:
+        composite_risk = risk
+        assessment = (
+            f"CAPE {cape:.0f} J/kg, CIN {cin:.0f} J/kg. "
+            f"{'Low convective potential.' if cape < 300 else 'Moderate instability.'}"
+        )
+
+    return {
+        "status": "ok",
+        "composite_risk_level": composite_risk,
+        "assessment": assessment,
+        "cape_current_j_kg": cape,
+        "cin_current_j_kg": cin,
+        "model_risk_level": risk,
+        "peak_cape_24h_j_kg": cape_data.get("peak_cape_24h_j_kg"),
+        "peak_cape_24h_time": cape_data.get("peak_cape_24h_time"),
+        "peak_cape_24h_cin": cape_data.get("peak_cape_24h_cin"),
+        "wh57_strikes_today": wh57_strikes,
+        "wh57_nearest_km": wh57_distance_km,
+        "active_strikes_detected": active_strikes,
+        "nearby_lightning": nearby_lightning,
+        "cape_hours_48h": cape_data.get("hours", []),
+        "method": "WH57 sensor (ground truth) + UKMO CAPE/CIN (forward-looking). No external forecast text.",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 def _safe_float(value):
@@ -795,6 +959,11 @@ async def call_gemini_forecast(context_payload, satellite_ai_images=None):
         "If local_nowcast data is present, treat it as a second independent short-term (1-3h) signal computed from "
         "our own pressure tendency and upwind regional stations. State briefly whether it agrees or disagrees with "
         "your own reading of the satellite and regional data, but do not just repeat its message verbatim.\n"
+        "If thunderstorm_risk data is present, incorporate it: CAPE (J/kg) measures atmospheric instability "
+        "(>1000 = significant, >2000 = severe), CIN measures convective inhibition (near 0 = storms can fire "
+        "freely, strongly negative = capped). Cross-reference CAPE with the WH57 sensor actual strike count. "
+        "If nearby_lightning is true, storms are already active. High CAPE with CIN near zero but no strikes yet "
+        "= imminent risk. High CAPE with strong negative CIN = potential but suppressed for now.\n"
         "Keep text concise and plain English for a dashboard.\n\n"
         f"DATA:\n{json.dumps(context_payload, ensure_ascii=True)}"
     )
@@ -956,23 +1125,33 @@ def parse_capture_images(html):
         name = filename.rsplit(".", 1)[0]
         parts = name.split("-")
         enhancement = "-".join(parts[5:]) if len(parts) >= 6 else name
-        images.append({"url": url, "proxy_url": satellite_proxy_url(url), "filename": filename, "enhancement": enhancement})
+        is_polar = "polar" in enhancement.lower()
+        images.append({
+            "url": url,
+            "proxy_url": satellite_proxy_url(url),
+            "filename": filename,
+            "enhancement": enhancement,
+            "is_polar": is_polar,
+        })
     return images
 
 def choose_satellite_image(images):
     if not images: return None
+    weather = [img for img in images if not img.get("is_polar")]
+    if not weather: return None
     for pref in ["equidistant_221_composite","equidistant_321_composite","composite","equidistant_221","equidistant_321"]:
-        for img in images:
+        for img in weather:
             if pref in img["filename"]: return img
-    return images[0]
+    return weather[0]
 
 def choose_satellite_image_by_enhancement(images, enhancement):
     if not images: return None
+    weather = [img for img in images if not img.get("is_polar")]
     wanted = (enhancement or "").strip()
     if wanted:
-        for img in images:
+        for img in weather:
             if img.get("enhancement") == wanted or wanted in img.get("filename", ""): return img
-    return choose_satellite_image(images)
+    return choose_satellite_image(weather)
 
 
 async def fetch_latest_satellite_payload(force=False):
@@ -995,10 +1174,34 @@ async def fetch_latest_satellite_payload(force=False):
     except HTTPException: raise
     except httpx.HTTPStatusError as exc: raise HTTPException(status_code=502, detail=f"Satellite HTTP error {exc.response.status_code}") from exc
     except httpx.RequestError as exc: raise HTTPException(status_code=502, detail=f"Satellite request error: {exc}") from exc
-    chosen = choose_satellite_image(images)
+    weather_imgs = [img for img in images if not img.get("is_polar")]
+    polar_imgs   = [img for img in images if img.get("is_polar")]
+    active_capture = latest
+
+    # If latest capture has no weather imagery (e.g. low-elevation pass that
+    # only produced polar charts), scan up to 5 earlier captures for imagery.
+    if not weather_imgs:
+        for fallback_capture in capture_cards[1:6]:
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as fc:
+                    fb_resp = await fc.get(satellite_absolute_url(fallback_capture["detail_path"]))
+                    fb_resp.raise_for_status()
+                    fb_imgs = parse_capture_images(fb_resp.text)
+                fb_weather = [i for i in fb_imgs if not i.get("is_polar")]
+                if fb_weather:
+                    weather_imgs     = fb_weather
+                    polar_imgs       = [i for i in fb_imgs if i.get("is_polar")]
+                    active_capture   = fallback_capture
+                    break
+            except Exception:
+                continue
+
+    chosen = choose_satellite_image(weather_imgs)
     if not chosen: raise HTTPException(status_code=502, detail="No satellite images found")
     payload = {"status": "ok", "source": SATELLITE_BASE_URL, "cached": False, "cache_age_seconds": 0,
-               "capture": latest, "image": chosen, "images": images, "updated_at": datetime.now(timezone.utc).isoformat()}
+               "capture": active_capture, "image": chosen, "images": weather_imgs,
+               "polar_images": polar_imgs,
+               "updated_at": datetime.now(timezone.utc).isoformat()}
     _satellite_cache["payload"] = deepcopy(payload)
     _satellite_cache["ts"] = time.time()
     return payload
@@ -1065,6 +1268,11 @@ async def api_wu_nearby(force: bool = False):
 @app.get("/api/cefas/buoys")
 async def api_cefas_buoys(force: bool = False):
     return await fetch_cefas_buoys(force=force)
+
+
+@app.get("/api/thunderstorm")
+async def api_thunderstorm():
+    return await compute_thunderstorm_risk()
 
 
 @app.get("/api/nowcast")
@@ -1276,6 +1484,25 @@ async def api_ai_forecast():
         context_payload["local_nowcast"] = await compute_nowcast()
     except Exception as exc:
         context_payload["local_nowcast"] = {"error": str(exc)}
+
+    try:
+        ts_risk = await compute_thunderstorm_risk()
+        context_payload["thunderstorm_risk"] = {
+            "composite_risk_level": ts_risk.get("composite_risk_level"),
+            "assessment": ts_risk.get("assessment"),
+            "cape_current_j_kg": ts_risk.get("cape_current_j_kg"),
+            "cin_current_j_kg": ts_risk.get("cin_current_j_kg"),
+            "peak_cape_24h_j_kg": ts_risk.get("peak_cape_24h_j_kg"),
+            "peak_cape_24h_time": ts_risk.get("peak_cape_24h_time"),
+            "peak_cape_24h_cin": ts_risk.get("peak_cape_24h_cin"),
+            "wh57_strikes_today": ts_risk.get("wh57_strikes_today"),
+            "wh57_nearest_km": ts_risk.get("wh57_nearest_km"),
+            "active_strikes_detected": ts_risk.get("active_strikes_detected"),
+            "nearby_lightning": ts_risk.get("nearby_lightning"),
+            "method": ts_risk.get("method"),
+        }
+    except Exception as exc:
+        context_payload["thunderstorm_risk"] = {"error": str(exc)}
 
     in_retry_cooldown = _ai_last_failure_ts > 0 and (now - _ai_last_failure_ts) < AI_RETRY_COOLDOWN_SECONDS
     if in_retry_cooldown:
