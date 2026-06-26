@@ -512,10 +512,18 @@ async def compute_thunderstorm_risk():
 
     if nearby_lightning:
         composite_risk = "high"
+        if cape > 1000:
+            cape_note = f"CAPE {cape:.0f} J/kg confirms elevated instability — storm continuation likely."
+        elif cape > 300:
+            cape_note = f"CAPE {cape:.0f} J/kg shows moderate instability supporting ongoing activity."
+        else:
+            cape_note = (
+                f"Model CAPE {cape:.0f} J/kg (low) but WH57 confirms active lightning — "
+                f"storms are occurring regardless of model output. Model is lagging reality."
+            )
         assessment = (
-            f"Active lightning detected by WH57 ({int(wh57_strikes)} strikes today, "
-            f"nearest {wh57_distance_km}km). CAPE {cape:.0f} J/kg — "
-            f"{'elevated instability supports continued activity' if cape > 500 else 'moderate instability present'}."
+            f"THUNDERSTORM ACTIVE — WH57: {int(wh57_strikes)} strikes today, "
+            f"nearest {wh57_distance_km}km. {cape_note}"
         )
     elif active_strikes:
         composite_risk = "elevated" if risk in ("low", "moderate") else risk
