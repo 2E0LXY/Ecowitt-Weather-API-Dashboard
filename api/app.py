@@ -1173,6 +1173,17 @@ def derived_satdump_weather_images(capture):
     ]
     return [satellite_image_payload(f"/images/{image_base}-{suffix}.jpg") for suffix in suffixes]
 
+def unique_satellite_images(images):
+    unique = []
+    seen = set()
+    for image in images:
+        key = image.get("url") or image.get("filename")
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(image)
+    return unique
+
 def choose_satellite_image(images):
     if not images: return None
     weather = [img for img in images if not img.get("is_polar")]
@@ -1209,7 +1220,7 @@ async def fetch_latest_satellite_payload(force=False):
             detail_resp = await client.get(satellite_absolute_url(latest["detail_path"]))
             detail_resp.raise_for_status()
             images = parse_capture_images(detail_resp.text)
-            images.extend(derived_satdump_weather_images(latest))
+            images = unique_satellite_images(images + derived_satdump_weather_images(latest))
     except HTTPException: raise
     except httpx.HTTPStatusError as exc: raise HTTPException(status_code=502, detail=f"Satellite HTTP error {exc.response.status_code}") from exc
     except httpx.RequestError as exc: raise HTTPException(status_code=502, detail=f"Satellite request error: {exc}") from exc
@@ -1226,7 +1237,7 @@ async def fetch_latest_satellite_payload(force=False):
                     fb_resp = await fc.get(satellite_absolute_url(fallback_capture["detail_path"]))
                     fb_resp.raise_for_status()
                     fb_imgs = parse_capture_images(fb_resp.text)
-                    fb_imgs.extend(derived_satdump_weather_images(fallback_capture))
+                    fb_imgs = unique_satellite_images(fb_imgs + derived_satdump_weather_images(fallback_capture))
                 fb_weather = [i for i in fb_imgs if not i.get("is_polar")]
                 if fb_weather:
                     weather_imgs     = fb_weather
@@ -1259,7 +1270,7 @@ async def fetch_satellite_ai_images():
             detail_resp = await client.get(satellite_absolute_url(capture["detail_path"]))
             detail_resp.raise_for_status()
             images = parse_capture_images(detail_resp.text)
-            images.extend(derived_satdump_weather_images(capture))
+            images = unique_satellite_images(images + derived_satdump_weather_images(capture))
             chosen = choose_satellite_image_by_enhancement(images, SATELLITE_AI_IMAGE_ENHANCEMENT)
             if not chosen: continue
             image_resp = await client.get(chosen["url"])
