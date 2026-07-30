@@ -1125,7 +1125,79 @@ def satellite_image_payload(path_or_url):
         "is_polar": is_polar,
     }
 
+def satellite_capture_base_from_path(path):
+    filename = unescape(path).rsplit("/", 1)[-1]
+    name = filename.rsplit(".", 1)[0]
+    known_suffixes = [
+        "website-thumbnail",
+        "221_projected",
+        "321_projected",
+        "MSA_projected",
+        "221_corrected",
+        "321_corrected",
+        "MSA_corrected",
+        "MCIR_projected",
+        "MCIR_corrected",
+        "654_projected",
+        "654_corrected",
+        "Thermal_Channel_projected",
+        "Thermal_Channel_corrected",
+        "polar-azel",
+        "polar-direction",
+        "spectrogram",
+        "pristine",
+        "histogram",
+    ]
+    for suffix in known_suffixes:
+        marker = f"-{suffix}"
+        if name.endswith(marker):
+            return name[: -len(marker)]
+    if "-" in name:
+        return name.rsplit("-", 1)[0]
+    return None
+
+def parse_new_capture_groups(html):
+    cards = []
+    for match in re.finditer(
+        r'<div class="capture-pass-group">(.*?)(?=<div class="capture-pass-group">|</section>)',
+        html,
+        flags=re.DOTALL,
+    ):
+        block = match.group(1)
+        pass_match = re.search(r'href="(/captures/listImages\?pass_id=(\d+))"', block)
+        if not pass_match:
+            continue
+        image_match = re.search(
+            r'data-full-src="(/images/[^"]+\.(?:jpg|jpeg|png))"',
+            block,
+            flags=re.IGNORECASE,
+        )
+        thumb_match = re.search(
+            r'src="(/srv/images/thumb/[^"]+\.(?:jpg|jpeg|png))"',
+            block,
+            flags=re.IGNORECASE,
+        )
+        title_match = re.search(r'<strong>\s*(.*?)\s*</strong>', block, flags=re.DOTALL)
+        meta_match = re.search(r'<span>\s*(.*?)\s*</span>', block, flags=re.DOTALL)
+        meta = " ".join(unescape(meta_match.group(1)).split()) if meta_match else "--"
+        image_path = image_match.group(1) if image_match else None
+        cards.append({
+            "pass_id": pass_match.group(2),
+            "detail_path": pass_match.group(1),
+            "satellite": unescape(title_match.group(1)).strip() if title_match else "Unknown",
+            "pass_start": meta.split("·", 1)[0].strip() if meta != "--" else "--",
+            "direction": "--",
+            "elevation": " ".join(meta.split("·")[1].replace("Elevation", "").split()) if "Elevation" in meta else "--",
+            "thumbnail_path": unescape(thumb_match.group(1)) if thumb_match else None,
+            "image_base": satellite_capture_base_from_path(image_path) if image_path else None,
+        })
+    return cards
+
 def parse_capture_cards(html):
+    new_cards = parse_new_capture_groups(html)
+    if new_cards:
+        return new_cards
+
     cards = []
     for match in re.finditer(r'<div class="card bg-light.*?</div>\s*</div>', html, flags=re.DOTALL):
         block = match.group(0)
