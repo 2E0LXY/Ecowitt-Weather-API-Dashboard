@@ -1110,12 +1110,28 @@ def satellite_absolute_url(path_or_url):
 def satellite_proxy_url(image_url):
     return f"/api/satellite/image?url={quote(image_url, safe='')}"
 
+def satellite_image_payload(path_or_url):
+    url = satellite_absolute_url(path_or_url)
+    filename = url.rsplit("/", 1)[-1]
+    name = filename.rsplit(".", 1)[0]
+    parts = name.split("-")
+    enhancement = "-".join(parts[5:]) if len(parts) >= 6 else name
+    is_polar = "polar" in enhancement.lower()
+    return {
+        "url": url,
+        "proxy_url": satellite_proxy_url(url),
+        "filename": filename,
+        "enhancement": enhancement,
+        "is_polar": is_polar,
+    }
+
 def parse_capture_cards(html):
     cards = []
     for match in re.finditer(r'<div class="card bg-light.*?</div>\s*</div>', html, flags=re.DOTALL):
         block = match.group(0)
         pass_match = re.search(r'href="(/captures/listImages\?pass_id=(\d+))"', block)
         if not pass_match: continue
+        thumb_match = re.search(r'src="(/srv/images/thumb/([^"]+?)-website-thumbnail\.(?:jpg|jpeg|png))"', block, flags=re.IGNORECASE)
         title_match = re.search(r'<h5 class="card-title">\s*(.*?)\s*</h5>', block, flags=re.DOTALL)
         pass_start_match = re.search(r'<strong>Pass Start:\s*</strong>\s*([^<]+)<', block, flags=re.DOTALL)
         direction_match = re.search(r'<strong>Direction:\s*</strong>\s*([^<]+)<', block, flags=re.DOTALL)
@@ -1126,32 +1142,42 @@ def parse_capture_cards(html):
             "pass_start": " ".join(unescape(pass_start_match.group(1)).split()) if pass_start_match else "--",
             "direction": " ".join(unescape(direction_match.group(1)).split()) if direction_match else "--",
             "elevation": " ".join(unescape(elevation_match.group(1)).split()) if elevation_match else "--",
+            "thumbnail_path": unescape(thumb_match.group(1)) if thumb_match else None,
+            "image_base": unescape(thumb_match.group(2)) if thumb_match else None,
         })
     return cards
 
 def parse_capture_images(html):
     images = []
-    for href in re.findall(r'href="(/images/[^"]+\.(?:jpg|jpeg|png))"', html, flags=re.IGNORECASE):
-        url = satellite_absolute_url(href)
-        filename = url.rsplit("/", 1)[-1]
-        name = filename.rsplit(".", 1)[0]
-        parts = name.split("-")
-        enhancement = "-".join(parts[5:]) if len(parts) >= 6 else name
-        is_polar = "polar" in enhancement.lower()
-        images.append({
-            "url": url,
-            "proxy_url": satellite_proxy_url(url),
-            "filename": filename,
-            "enhancement": enhancement,
-            "is_polar": is_polar,
-        })
+    seen = set()
+    for path in re.findall(r'(?:href|src)="((?:/images|/srv/images)(?:/thumb)?/[^"]+\.(?:jpg|jpeg|png))"', html, flags=re.IGNORECASE):
+        if "/thumb/" in path:
+            path = path.replace("/thumb/", "/")
+        if path in seen:
+            continue
+        seen.add(path)
+        images.append(satellite_image_payload(path))
     return images
+
+def derived_satdump_weather_images(capture):
+    image_base = capture.get("image_base")
+    if not image_base:
+        return []
+    suffixes = [
+        "221_projected",
+        "321_projected",
+        "MSA_projected",
+        "221_corrected",
+        "321_corrected",
+        "MSA_corrected",
+    ]
+    return [satellite_image_payload(f"/images/{image_base}-{suffix}.jpg") for suffix in suffixes]
 
 def choose_satellite_image(images):
     if not images: return None
     weather = [img for img in images if not img.get("is_polar")]
     if not weather: return None
-    for pref in ["equidistant_221_composite","equidistant_321_composite","composite","equidistant_221","equidistant_321"]:
+    for pref in ["221_projected","321_projected","MSA_projected","221_corrected","321_corrected","MSA_corrected","equidistant_221_composite","equidistant_321_composite","composite","equidistant_221","equidistant_321"]:
         for img in weather:
             if pref in img["filename"]: return img
     return weather[0]
@@ -1183,6 +1209,7 @@ async def fetch_latest_satellite_payload(force=False):
             detail_resp = await client.get(satellite_absolute_url(latest["detail_path"]))
             detail_resp.raise_for_status()
             images = parse_capture_images(detail_resp.text)
+            images.extend(derived_satdump_weather_images(latest))
     except HTTPException: raise
     except httpx.HTTPStatusError as exc: raise HTTPException(status_code=502, detail=f"Satellite HTTP error {exc.response.status_code}") from exc
     except httpx.RequestError as exc: raise HTTPException(status_code=502, detail=f"Satellite request error: {exc}") from exc
@@ -1199,6 +1226,7 @@ async def fetch_latest_satellite_payload(force=False):
                     fb_resp = await fc.get(satellite_absolute_url(fallback_capture["detail_path"]))
                     fb_resp.raise_for_status()
                     fb_imgs = parse_capture_images(fb_resp.text)
+                    fb_imgs.extend(derived_satdump_weather_images(fallback_capture))
                 fb_weather = [i for i in fb_imgs if not i.get("is_polar")]
                 if fb_weather:
                     weather_imgs     = fb_weather
@@ -1231,6 +1259,7 @@ async def fetch_satellite_ai_images():
             detail_resp = await client.get(satellite_absolute_url(capture["detail_path"]))
             detail_resp.raise_for_status()
             images = parse_capture_images(detail_resp.text)
+            images.extend(derived_satdump_weather_images(capture))
             chosen = choose_satellite_image_by_enhancement(images, SATELLITE_AI_IMAGE_ENHANCEMENT)
             if not chosen: continue
             image_resp = await client.get(chosen["url"])
@@ -1261,7 +1290,11 @@ async def api_satellite_latest(force: bool = False):
 @app.get("/api/satellite/image")
 async def api_satellite_image(url: str = Query(...)):
     image_url = unquote(url)
-    if not image_url.startswith(f"{SATELLITE_BASE_URL.rstrip('/')}/images/"):
+    allowed_prefixes = (
+        f"{SATELLITE_BASE_URL.rstrip('/')}/images/",
+        f"{SATELLITE_BASE_URL.rstrip('/')}/srv/images/",
+    )
+    if not image_url.startswith(allowed_prefixes):
         raise HTTPException(status_code=400, detail="Invalid satellite image URL")
     try:
         async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:

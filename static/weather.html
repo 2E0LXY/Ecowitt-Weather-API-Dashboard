@@ -1982,8 +1982,16 @@
                 const pickImage = (needle, fallback = null) => {
                     return allImages.find((item) => item.filename && item.filename.includes(needle)) || fallback;
                 };
-                const primaryImage = image.proxy_url ? image : pickImage('equidistant_221_composite', allImages[0] || {});
-                const secondaryImage = pickImage('equidistant_321_composite') || allImages.find((item) => item.filename !== primaryImage.filename) || primaryImage;
+                const primaryImage =
+                    pickImage('221_projected') ||
+                    pickImage('221_corrected') ||
+                    (image.proxy_url ? image : pickImage('equidistant_221_composite', allImages[0] || {}));
+                const secondaryImage =
+                    pickImage('321_projected') ||
+                    pickImage('321_corrected') ||
+                    pickImage('equidistant_321_composite') ||
+                    allImages.find((item) => item.filename !== primaryImage.filename) ||
+                    primaryImage;
                 if (satelliteNameEl) satelliteNameEl.textContent = capture.satellite || '--';
                 if (satellitePassStartEl) satellitePassStartEl.textContent = capture.pass_start || '--';
                 if (satelliteDirectionEl) satelliteDirectionEl.textContent = capture.direction || '--';
