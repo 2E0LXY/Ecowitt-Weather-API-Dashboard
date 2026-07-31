@@ -1125,6 +1125,15 @@ def satellite_image_payload(path_or_url):
         "is_polar": is_polar,
     }
 
+def satellite_thumbnail_payload(path_or_url):
+    if not path_or_url:
+        return None
+    url = satellite_absolute_url(path_or_url)
+    return {
+        "url": url,
+        "proxy_url": satellite_proxy_url(url),
+    }
+
 def satellite_capture_base_from_path(path):
     filename = unescape(path).rsplit("/", 1)[-1]
     name = filename.rsplit(".", 1)[0]
@@ -1192,6 +1201,58 @@ def parse_new_capture_groups(html):
             "image_base": satellite_capture_base_from_path(image_path) if image_path else None,
         })
     return cards
+
+def parse_diagnostic_gallery_images(html, limit=25):
+    diagnostics = []
+    for group_match in re.finditer(
+        r'<div class="capture-pass-group">(.*?)(?=<div class="capture-pass-group">|</section>)',
+        html,
+        flags=re.DOTALL,
+    ):
+        group = group_match.group(1)
+        pass_match = re.search(r'href="(/captures/listImages\?pass_id=(\d+))"', group)
+        title_match = re.search(r'<strong>\s*(.*?)\s*</strong>', group, flags=re.DOTALL)
+        meta_match = re.search(r'<span>\s*(.*?)\s*</span>', group, flags=re.DOTALL)
+        meta = " ".join(unescape(meta_match.group(1)).split()) if meta_match else "--"
+        meta_parts = [p.strip() for p in meta.split("·")]
+        capture = {
+            "pass_id": pass_match.group(2) if pass_match else None,
+            "detail_path": pass_match.group(1) if pass_match else None,
+            "satellite": unescape(title_match.group(1)).strip() if title_match else "Unknown",
+            "pass_start": meta_parts[0] if meta_parts else "--",
+            "elevation": next((" ".join(p.replace("Elevation", "").split()) for p in meta_parts if "Elevation" in p), "--"),
+            "gain": next((" ".join(p.replace("Gain", "").split()) for p in meta_parts if "Gain" in p), "--"),
+            "direction": "--",
+        }
+
+        for article_match in re.finditer(r'<article\b.*?</article>', group, flags=re.DOTALL):
+            article = article_match.group(0)
+            full_match = re.search(r'data-full-src="([^"]+)"', article)
+            thumb_match = re.search(r'<img[^>]+src="([^"]+)"', article, flags=re.IGNORECASE)
+            if not full_match:
+                continue
+            image = satellite_image_payload(full_match.group(1))
+            if image.get("is_polar"):
+                continue
+            title_attr = re.search(r'data-title="([^"]+)"', article)
+            meta_attr = re.search(r'data-meta="([^"]+)"', article)
+            card_title = re.search(r'<h5[^>]*>\s*(.*?)\s*</h5>', article, flags=re.DOTALL)
+            category = re.search(r'<div class="capture-card-heading">.*?<span>\s*(.*?)\s*</span>', article, flags=re.DOTALL)
+            meta_bits = [p.strip() for p in unescape(meta_attr.group(1)).split("|")] if meta_attr else []
+            image.update({
+                "title": unescape(title_attr.group(1)).strip() if title_attr else (unescape(card_title.group(1)).strip() if card_title else image["enhancement"]),
+                "display_name": unescape(card_title.group(1)).strip() if card_title else image["enhancement"].replace("_", " ").title(),
+                "category": unescape(category.group(1)).strip() if category else None,
+                "dimensions": meta_bits[1] if len(meta_bits) > 1 else None,
+                "size": meta_bits[2] if len(meta_bits) > 2 else None,
+                "is_primary": "capture-primary-card" in article or "capture-best-badge" in article,
+                "thumbnail": satellite_thumbnail_payload(unescape(thumb_match.group(1))) if thumb_match else None,
+                "capture": capture,
+            })
+            diagnostics.append(image)
+            if len(diagnostics) >= limit:
+                return diagnostics
+    return diagnostics
 
 def parse_capture_cards(html):
     new_cards = parse_new_capture_groups(html)
@@ -1355,6 +1416,54 @@ async def fetch_satellite_ai_images():
     return list(reversed(ai_images))
 
 
+async def fetch_satellite_diagnostics_payload(limit=25):
+    limit = max(1, min(50, int(limit)))
+    try:
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+            captures_resp = await client.get(satellite_absolute_url("/captures?page_no=1"))
+            captures_resp.raise_for_status()
+            images = parse_diagnostic_gallery_images(captures_resp.text, limit=limit)
+
+            if not images:
+                capture_cards = parse_capture_cards(captures_resp.text)
+                for capture in capture_cards:
+                    if len(images) >= limit:
+                        break
+                    detail_resp = await client.get(satellite_absolute_url(capture["detail_path"]))
+                    detail_resp.raise_for_status()
+                    for image in unique_satellite_images(parse_capture_images(detail_resp.text) + derived_satdump_weather_images(capture)):
+                        if image.get("is_polar"):
+                            continue
+                        image.update({
+                            "title": f"{capture.get('satellite', 'METEOR')} - {image.get('enhancement', image.get('filename', 'Image'))}",
+                            "display_name": image.get("enhancement", image.get("filename", "Image")).replace("_", " ").replace("-", " ").title(),
+                            "category": "Projected" if "projected" in image.get("filename", "") else ("Corrected" if "corrected" in image.get("filename", "") else None),
+                            "dimensions": None,
+                            "size": None,
+                            "is_primary": "projected" in image.get("filename", ""),
+                            "thumbnail": None,
+                            "capture": capture,
+                        })
+                        images.append(image)
+                        if len(images) >= limit:
+                            break
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(status_code=502, detail=f"Satellite diagnostics HTTP error {exc.response.status_code}") from exc
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail=f"Satellite diagnostics request error: {exc}") from exc
+
+    if not images:
+        raise HTTPException(status_code=502, detail="No METEOR diagnostic images found")
+    return {
+        "status": "ok",
+        "source": SATELLITE_BASE_URL,
+        "limit": limit,
+        "count": len(images),
+        "images": images,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 @app.on_event("startup")
 async def on_startup():
     init_db()
@@ -1368,6 +1477,11 @@ async def health():
 @app.get("/api/satellite/latest")
 async def api_satellite_latest(force: bool = False):
     return await fetch_latest_satellite_payload(force=force)
+
+
+@app.get("/api/satellite/diagnostics")
+async def api_satellite_diagnostics(limit: int = Query(25, ge=1, le=50)):
+    return await fetch_satellite_diagnostics_payload(limit=limit)
 
 
 @app.get("/api/satellite/image")
