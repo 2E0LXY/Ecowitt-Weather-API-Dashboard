@@ -321,12 +321,35 @@
             background: rgba(8, 14, 28, 0.96);
         }
 
+        .image-lightbox-viewer {
+            min-height: 0;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #020617;
+            touch-action: none;
+        }
+
         .image-lightbox img {
             width: 100%;
             height: 100%;
             min-height: 0;
             object-fit: contain;
             background: #020617;
+            transform-origin: center center;
+            transition: transform 120ms ease;
+            user-select: none;
+            -webkit-user-drag: none;
+        }
+
+        .image-lightbox img.zoomed {
+            cursor: grab;
+        }
+
+        .image-lightbox img.is-panning {
+            cursor: grabbing;
+            transition: none;
         }
 
         .image-lightbox-bar {
@@ -334,8 +357,48 @@
             align-items: center;
             justify-content: space-between;
             gap: 12px;
+            flex-wrap: wrap;
             padding: 10px 12px;
             border-bottom: 1px solid rgba(147, 197, 253, 0.16);
+        }
+
+        .image-lightbox-tools {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+
+        @media (max-width: 520px) {
+            .image-lightbox-tools {
+                width: 100%;
+                justify-content: space-between;
+            }
+        }
+
+        .image-lightbox-tool {
+            height: 36px;
+            min-width: 36px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 999px;
+            border: 1px solid rgba(147, 197, 253, 0.24);
+            background: rgba(30, 41, 59, 0.85);
+            color: #e0f2fe;
+            font-weight: 700;
+        }
+
+        .image-lightbox-tool:hover {
+            background: rgba(51, 65, 85, 0.95);
+        }
+
+        .image-lightbox-zoom-label {
+            min-width: 54px;
+            text-align: center;
+            color: #bfdbfe;
+            font-size: 0.78rem;
+            font-weight: 700;
         }
 
         .image-lightbox-caption {
@@ -1104,13 +1167,28 @@
                     <p id="meteor-lightbox-title" class="font-semibold text-blue-100 truncate">Satellite image</p>
                     <p id="meteor-lightbox-subtitle" class="text-xs text-blue-300 truncate">--</p>
                 </div>
-                <button id="meteor-lightbox-close" class="bg-gray-700 hover:bg-gray-600 text-white rounded-full h-9 w-9 flex items-center justify-center" aria-label="Close image">
-                    <i class="ph-bold ph-x"></i>
-                </button>
+                <div class="image-lightbox-tools">
+                    <button id="meteor-zoom-out" class="image-lightbox-tool" aria-label="Zoom out" title="Zoom out">
+                        <i class="ph-bold ph-minus"></i>
+                    </button>
+                    <span id="meteor-zoom-label" class="image-lightbox-zoom-label">100%</span>
+                    <button id="meteor-zoom-in" class="image-lightbox-tool" aria-label="Zoom in" title="Zoom in">
+                        <i class="ph-bold ph-plus"></i>
+                    </button>
+                    <button id="meteor-zoom-reset" class="image-lightbox-tool" aria-label="Reset zoom" title="Reset zoom">
+                        <i class="ph-bold ph-arrows-in"></i>
+                    </button>
+                    <button id="meteor-lightbox-close" class="image-lightbox-tool" aria-label="Close image" title="Close image">
+                        <i class="ph-bold ph-x"></i>
+                    </button>
+                </div>
             </div>
-            <img id="meteor-lightbox-image" alt="Full resolution METEOR satellite image">
+            <div class="image-lightbox-viewer" id="meteor-lightbox-viewer">
+                <img id="meteor-lightbox-image" alt="Full resolution METEOR satellite image">
+            </div>
             <div class="image-lightbox-caption">
-                <a id="meteor-lightbox-open" href="#" target="_blank" rel="noopener" class="text-sky-300 hover:text-sky-200 font-semibold">Open original full resolution image</a>
+                <span class="text-blue-300">Use +/- or mouse wheel to zoom. Drag when zoomed.</span>
+                <a id="meteor-lightbox-open" href="#" target="_blank" rel="noopener" class="text-sky-300 hover:text-sky-200 font-semibold ml-3">Open original full resolution image</a>
             </div>
         </div>
     </div>
@@ -1161,6 +1239,11 @@
         let miniTrendChart = null;
         let meteorDiagnosticsImages = [];
         let meteorDiagnosticsLoaded = false;
+        let meteorZoomScale = 1;
+        let meteorPanX = 0;
+        let meteorPanY = 0;
+        let meteorIsPanning = false;
+        let meteorPanStart = { x: 0, y: 0, panX: 0, panY: 0 };
         const currentOverlay = {
             tempC: null,
             humidity: null,
@@ -1228,6 +1311,11 @@
         const meteorLightboxSubtitleEl = document.getElementById('meteor-lightbox-subtitle');
         const meteorLightboxOpenEl = document.getElementById('meteor-lightbox-open');
         const meteorLightboxCloseEl = document.getElementById('meteor-lightbox-close');
+        const meteorLightboxViewerEl = document.getElementById('meteor-lightbox-viewer');
+        const meteorZoomInBtn = document.getElementById('meteor-zoom-in');
+        const meteorZoomOutBtn = document.getElementById('meteor-zoom-out');
+        const meteorZoomResetBtn = document.getElementById('meteor-zoom-reset');
+        const meteorZoomLabelEl = document.getElementById('meteor-zoom-label');
         const wuStatusEl = document.getElementById('wu-status');
         const wuRefreshBtn = document.getElementById('wu-refresh-btn');
         const wuAvgTempEl = document.getElementById('wu-avg-temp');
@@ -2233,10 +2321,48 @@
             return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         }
 
+        function clampMeteorPan() {
+            if (!meteorLightboxViewerEl || meteorZoomScale <= 1) {
+                meteorPanX = 0;
+                meteorPanY = 0;
+                return;
+            }
+            const maxX = (meteorLightboxViewerEl.clientWidth * (meteorZoomScale - 1)) / 2;
+            const maxY = (meteorLightboxViewerEl.clientHeight * (meteorZoomScale - 1)) / 2;
+            meteorPanX = Math.max(-maxX, Math.min(maxX, meteorPanX));
+            meteorPanY = Math.max(-maxY, Math.min(maxY, meteorPanY));
+        }
+
+        function applyMeteorZoom() {
+            clampMeteorPan();
+            if (meteorLightboxImageEl) {
+                meteorLightboxImageEl.style.transform = `translate(${meteorPanX}px, ${meteorPanY}px) scale(${meteorZoomScale})`;
+                meteorLightboxImageEl.classList.toggle('zoomed', meteorZoomScale > 1);
+            }
+            if (meteorZoomLabelEl) meteorZoomLabelEl.textContent = `${Math.round(meteorZoomScale * 100)}%`;
+        }
+
+        function setMeteorZoom(scale) {
+            meteorZoomScale = Math.max(1, Math.min(6, Math.round(scale * 100) / 100));
+            if (meteorZoomScale === 1) {
+                meteorPanX = 0;
+                meteorPanY = 0;
+            }
+            applyMeteorZoom();
+        }
+
+        function resetMeteorZoom() {
+            meteorZoomScale = 1;
+            meteorPanX = 0;
+            meteorPanY = 0;
+            applyMeteorZoom();
+        }
+
         function openMeteorLightbox(index) {
             const item = meteorDiagnosticsImages[index];
             if (!item || !meteorImageLightboxEl) return;
             const capture = item.capture || {};
+            resetMeteorZoom();
             if (meteorLightboxImageEl) {
                 meteorLightboxImageEl.src = item.proxy_url || item.url || '';
                 meteorLightboxImageEl.alt = item.title || item.display_name || 'Full resolution METEOR satellite image';
@@ -2260,6 +2386,7 @@
             meteorImageLightboxEl.classList.remove('active');
             meteorImageLightboxEl.setAttribute('aria-hidden', 'true');
             if (meteorLightboxImageEl) meteorLightboxImageEl.removeAttribute('src');
+            resetMeteorZoom();
         }
 
         function renderMeteorDiagnostics(images) {
@@ -2891,6 +3018,38 @@
             });
         }
         if (meteorLightboxCloseEl) meteorLightboxCloseEl.addEventListener('click', closeMeteorLightbox);
+        if (meteorZoomInBtn) meteorZoomInBtn.addEventListener('click', () => setMeteorZoom(meteorZoomScale + 0.5));
+        if (meteorZoomOutBtn) meteorZoomOutBtn.addEventListener('click', () => setMeteorZoom(meteorZoomScale - 0.5));
+        if (meteorZoomResetBtn) meteorZoomResetBtn.addEventListener('click', resetMeteorZoom);
+        if (meteorLightboxViewerEl) {
+            meteorLightboxViewerEl.addEventListener('wheel', (event) => {
+                if (!meteorImageLightboxEl?.classList.contains('active')) return;
+                event.preventDefault();
+                setMeteorZoom(meteorZoomScale + (event.deltaY < 0 ? 0.25 : -0.25));
+            }, { passive: false });
+            meteorLightboxViewerEl.addEventListener('dblclick', () => {
+                setMeteorZoom(meteorZoomScale > 1 ? 1 : 2.5);
+            });
+            meteorLightboxViewerEl.addEventListener('pointerdown', (event) => {
+                if (meteorZoomScale <= 1 || !meteorLightboxImageEl) return;
+                meteorIsPanning = true;
+                meteorPanStart = { x: event.clientX, y: event.clientY, panX: meteorPanX, panY: meteorPanY };
+                meteorLightboxImageEl.classList.add('is-panning');
+                meteorLightboxViewerEl.setPointerCapture(event.pointerId);
+            });
+            meteorLightboxViewerEl.addEventListener('pointermove', (event) => {
+                if (!meteorIsPanning) return;
+                meteorPanX = meteorPanStart.panX + event.clientX - meteorPanStart.x;
+                meteorPanY = meteorPanStart.panY + event.clientY - meteorPanStart.y;
+                applyMeteorZoom();
+            });
+            ['pointerup', 'pointercancel', 'pointerleave'].forEach((name) => {
+                meteorLightboxViewerEl.addEventListener(name, () => {
+                    meteorIsPanning = false;
+                    if (meteorLightboxImageEl) meteorLightboxImageEl.classList.remove('is-panning');
+                });
+            });
+        }
         if (meteorImageLightboxEl) {
             meteorImageLightboxEl.addEventListener('click', (event) => {
                 if (event.target === meteorImageLightboxEl) closeMeteorLightbox();
