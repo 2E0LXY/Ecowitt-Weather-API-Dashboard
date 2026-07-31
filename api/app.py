@@ -72,6 +72,7 @@ AI_RETRY_COOLDOWN_SECONDS = 600
 _ai_last_failure_ts = 0.0
 SATELLITE_CACHE_TTL_SECONDS = 300
 _satellite_cache = {"ts": 0.0, "payload": None}
+_receiver_diagnostics_cache = {"ts": 0.0, "payload": None}
 _wu_cache = {"ts": 0.0, "payload": None}
 _cefas_cache = {"ts": 0.0, "payload": None}
 _cape_cache = {"ts": 0.0, "payload": None}
@@ -1123,6 +1124,7 @@ def satellite_image_payload(path_or_url):
         "filename": filename,
         "enhancement": enhancement,
         "is_polar": is_polar,
+        "image_base": satellite_capture_base_from_path(filename),
     }
 
 def satellite_thumbnail_payload(path_or_url):
@@ -1234,6 +1236,8 @@ def parse_diagnostic_gallery_images(html, limit=25):
             image = satellite_image_payload(full_match.group(1))
             if image.get("is_polar"):
                 continue
+            if image.get("image_base") and not capture.get("file_path"):
+                capture["file_path"] = image["image_base"]
             title_attr = re.search(r'data-title="([^"]+)"', article)
             meta_attr = re.search(r'data-meta="([^"]+)"', article)
             card_title = re.search(r'<h5[^>]*>\s*(.*?)\s*</h5>', article, flags=re.DOTALL)
@@ -1416,6 +1420,22 @@ async def fetch_satellite_ai_images():
     return list(reversed(ai_images))
 
 
+async def fetch_receiver_diagnostics_payload():
+    now = time.time()
+    if _receiver_diagnostics_cache["payload"] and (now - _receiver_diagnostics_cache["ts"] < SATELLITE_CACHE_TTL_SECONDS):
+        return deepcopy(_receiver_diagnostics_cache["payload"])
+    try:
+        async with httpx.AsyncClient(timeout=12.0, follow_redirects=True) as client:
+            resp = await client.get(satellite_absolute_url("/receiver_diagnostics.json"))
+            resp.raise_for_status()
+            payload = resp.json()
+    except Exception:
+        return None
+    _receiver_diagnostics_cache["payload"] = deepcopy(payload)
+    _receiver_diagnostics_cache["ts"] = time.time()
+    return payload
+
+
 async def fetch_satellite_diagnostics_payload(limit=25):
     limit = max(1, min(50, int(limit)))
     try:
@@ -1454,12 +1474,34 @@ async def fetch_satellite_diagnostics_payload(limit=25):
 
     if not images:
         raise HTTPException(status_code=502, detail="No METEOR diagnostic images found")
+    receiver_diagnostics = await fetch_receiver_diagnostics_payload()
+    diagnostics_by_base = {}
+    if isinstance(receiver_diagnostics, dict):
+        for item in receiver_diagnostics.get("pass_diagnostics", []):
+            base = item.get("file_path")
+            if base:
+                diagnostics_by_base[base] = item
+    for image in images:
+        base = image.get("image_base") or satellite_capture_base_from_path(image.get("filename", ""))
+        if base:
+            image["image_base"] = base
+            image["decode_diagnostics"] = diagnostics_by_base.get(base)
+            if image.get("capture") and not image["capture"].get("file_path"):
+                image["capture"]["file_path"] = base
     return {
         "status": "ok",
         "source": SATELLITE_BASE_URL,
         "limit": limit,
         "count": len(images),
         "images": images,
+        "receiver_diagnostics": {
+            "available": isinstance(receiver_diagnostics, dict),
+            "generated_at": receiver_diagnostics.get("generated_at") if isinstance(receiver_diagnostics, dict) else None,
+            "satdump": receiver_diagnostics.get("satdump") if isinstance(receiver_diagnostics, dict) else None,
+            "tle": receiver_diagnostics.get("tle") if isinstance(receiver_diagnostics, dict) else None,
+            "receiver_health": receiver_diagnostics.get("receiver_health") if isinstance(receiver_diagnostics, dict) else None,
+            "quality_by_geometry": receiver_diagnostics.get("quality_by_geometry") if isinstance(receiver_diagnostics, dict) else None,
+        },
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
 

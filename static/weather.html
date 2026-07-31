@@ -294,6 +294,61 @@
             font-weight: 700;
         }
 
+        .quality-badge {
+            display: inline-flex;
+            align-items: center;
+            border-radius: 999px;
+            padding: 4px 9px;
+            font-size: 0.72rem;
+            font-weight: 800;
+            border: 1px solid rgba(148, 163, 184, 0.3);
+            color: #e2e8f0;
+            background: rgba(100, 116, 139, 0.2);
+        }
+
+        .quality-excellent { color: #bbf7d0; background: rgba(34, 197, 94, 0.16); border-color: rgba(34, 197, 94, 0.38); }
+        .quality-good { color: #d9f99d; background: rgba(132, 204, 22, 0.16); border-color: rgba(132, 204, 22, 0.38); }
+        .quality-fair { color: #fde68a; background: rgba(245, 158, 11, 0.16); border-color: rgba(245, 158, 11, 0.42); }
+        .quality-poor { color: #fecaca; background: rgba(239, 68, 68, 0.16); border-color: rgba(239, 68, 68, 0.42); }
+
+        .decode-metric-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 6px;
+        }
+
+        .decode-metric {
+            border: 1px solid rgba(147, 197, 253, 0.12);
+            border-radius: 0.65rem;
+            padding: 7px;
+            background: rgba(15, 23, 42, 0.48);
+        }
+
+        .decode-metric span {
+            display: block;
+            color: #93c5fd;
+            font-size: 0.68rem;
+        }
+
+        .decode-metric strong {
+            display: block;
+            color: #e0f2fe;
+            font-size: 0.78rem;
+            margin-top: 1px;
+        }
+
+        .geometry-pill {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            border: 1px solid rgba(147, 197, 253, 0.14);
+            border-radius: 0.75rem;
+            padding: 8px 10px;
+            background: rgba(255, 255, 255, 0.04);
+            color: #bfdbfe;
+            font-size: 0.78rem;
+        }
+
         .image-lightbox {
             position: fixed;
             inset: 0;
@@ -1102,6 +1157,21 @@
                     </div>
                 </div>
 
+                <div id="meteor-receiver-summary" class="grid grid-cols-1 lg:grid-cols-3 gap-3 text-sm mb-5">
+                    <div class="rounded-lg bg-white/5 border border-white/10 p-3 text-blue-200">Receiver diagnostics loading...</div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 text-sm mb-5">
+                    <div class="rounded-lg bg-white/5 border border-white/10 p-3">
+                        <h3 class="text-sm font-semibold text-blue-100 mb-2">Quality by Elevation</h3>
+                        <div id="meteor-quality-elevation" class="space-y-2 text-blue-200">--</div>
+                    </div>
+                    <div class="rounded-lg bg-white/5 border border-white/10 p-3">
+                        <h3 class="text-sm font-semibold text-blue-100 mb-2">Quality by Azimuth</h3>
+                        <div id="meteor-quality-azimuth" class="space-y-2 text-blue-200">--</div>
+                    </div>
+                </div>
+
                 <div id="meteor-diagnostics-gallery" class="diagnostics-grid">
                     <div class="diagnostic-card">
                         <div class="diagnostic-card-body text-sm text-blue-200">Loading images...</div>
@@ -1305,6 +1375,9 @@
         const meteorDiagnosticsLatestSatEl = document.getElementById('meteor-diagnostics-latest-sat');
         const meteorDiagnosticsLatestPassEl = document.getElementById('meteor-diagnostics-latest-pass');
         const meteorDiagnosticsUpdatedEl = document.getElementById('meteor-diagnostics-updated');
+        const meteorReceiverSummaryEl = document.getElementById('meteor-receiver-summary');
+        const meteorQualityElevationEl = document.getElementById('meteor-quality-elevation');
+        const meteorQualityAzimuthEl = document.getElementById('meteor-quality-azimuth');
         const meteorImageLightboxEl = document.getElementById('meteor-image-lightbox');
         const meteorLightboxImageEl = document.getElementById('meteor-lightbox-image');
         const meteorLightboxTitleEl = document.getElementById('meteor-lightbox-title');
@@ -2389,6 +2462,88 @@
             resetMeteorZoom();
         }
 
+        function qualityClass(label) {
+            const normalized = String(label || '').toLowerCase();
+            if (normalized.includes('excellent')) return 'quality-excellent';
+            if (normalized.includes('good')) return 'quality-good';
+            if (normalized.includes('fair')) return 'quality-fair';
+            if (normalized.includes('poor')) return 'quality-poor';
+            return '';
+        }
+
+        function formatMetric(value, suffix = '') {
+            return value === null || value === undefined || value === '' || Number.isNaN(Number(value))
+                ? '--'
+                : `${Number(value).toFixed(Number(value) % 1 ? 1 : 0)}${suffix}`;
+        }
+
+        function formatSmallNumber(value, places = 3) {
+            return value === null || value === undefined || value === '' || Number.isNaN(Number(value))
+                ? '--'
+                : Number(value).toFixed(places);
+        }
+
+        function enhancementDescription(item) {
+            const name = String(item.enhancement || item.display_name || item.filename || '').toLowerCase();
+            const bits = [];
+            if (name.includes('221')) bits.push('221 = visible-style RGB using channels 2-2-1, good for cloud and land contrast.');
+            else if (name.includes('321')) bits.push('321 = RGB using channels 3-2-1, often better for separating cloud, sea and land tone.');
+            else if (name.includes('msa')) bits.push('MSA = multispectral analysis, a false-colour product designed to make cloud/weather structure easier to read.');
+            if (name.includes('projected')) bits.push('Projected = map-corrected view placed onto the Earth map.');
+            else if (name.includes('corrected')) bits.push('Corrected = geometry-corrected image in the satellite pass strip.');
+            return bits.join(' ');
+        }
+
+        function renderGeometryQuality(target, rows) {
+            if (!target) return;
+            if (!Array.isArray(rows) || !rows.length) {
+                target.textContent = '--';
+                return;
+            }
+            target.innerHTML = rows.map((row) => `
+                <div class="geometry-pill">
+                    <span>${escapeHtml(row.band || 'Unknown')}</span>
+                    <strong>${escapeHtml(row.avg_score ?? '--')}/100 (${escapeHtml(row.count ?? 0)} passes)</strong>
+                </div>
+            `).join('');
+        }
+
+        function renderReceiverSummary(receiverDiagnostics) {
+            const available = receiverDiagnostics && receiverDiagnostics.available;
+            if (!meteorReceiverSummaryEl) return;
+            if (!available) {
+                meteorReceiverSummaryEl.innerHTML = '<div class="rounded-lg bg-white/5 border border-white/10 p-3 text-red-200">Receiver diagnostics JSON is not available yet.</div>';
+                renderGeometryQuality(meteorQualityElevationEl, []);
+                renderGeometryQuality(meteorQualityAzimuthEl, []);
+                return;
+            }
+            const health = receiverDiagnostics.receiver_health || {};
+            const tle = receiverDiagnostics.tle?.primary || {};
+            const satdump = receiverDiagnostics.satdump || {};
+            const signals = Array.isArray(satdump.decode_signals_used) ? satdump.decode_signals_used.join(', ') : '--';
+            const tleClass = tle.status === 'ok' ? 'quality-good' : (tle.status === 'warning' ? 'quality-fair' : 'quality-poor');
+            const antennaClass = health.antenna_inferred_status === 'good' ? 'quality-good' : (health.antenna_inferred_status === 'watch' ? 'quality-fair' : 'quality-poor');
+            meteorReceiverSummaryEl.innerHTML = `
+                <div class="rounded-lg bg-white/5 border border-white/10 p-3">
+                    <p class="text-blue-200 text-xs">SDR / Antenna</p>
+                    <p class="font-semibold">${escapeHtml(health.receiver_type || '--')} ${health.rtl_sdr_usb_present ? 'RTL-SDR present' : 'RTL-SDR not seen'}</p>
+                    <p class="text-xs text-blue-300 mt-1">Antenna inference: <span class="quality-badge ${antennaClass}">${escapeHtml(health.antenna_inferred_status || 'unknown')}</span></p>
+                </div>
+                <div class="rounded-lg bg-white/5 border border-white/10 p-3">
+                    <p class="text-blue-200 text-xs">TLE Age</p>
+                    <p class="font-semibold"><span class="quality-badge ${tleClass}">${escapeHtml(tle.status || '--')}</span> ${escapeHtml(tle.age_hours ?? '--')} hours</p>
+                    <p class="text-xs text-blue-300 mt-1">${escapeHtml(tle.path || '--')}</p>
+                </div>
+                <div class="rounded-lg bg-white/5 border border-white/10 p-3">
+                    <p class="text-blue-200 text-xs">SatDump Signals Used</p>
+                    <p class="text-xs text-blue-100 leading-relaxed">${escapeHtml(signals)}</p>
+                </div>
+            `;
+            const geometry = receiverDiagnostics.quality_by_geometry || {};
+            renderGeometryQuality(meteorQualityElevationEl, geometry.elevation || []);
+            renderGeometryQuality(meteorQualityAzimuthEl, geometry.azimuth_at_max || []);
+        }
+
         function renderMeteorDiagnostics(images) {
             if (!meteorDiagnosticsGalleryEl) return;
             if (!images.length) {
@@ -2400,6 +2555,12 @@
                 const thumb = item.thumbnail?.proxy_url || item.proxy_url || item.url || '';
                 const title = item.display_name || item.enhancement || item.filename || 'Satellite image';
                 const category = item.category || (String(item.filename || '').includes('projected') ? 'Projected' : 'Corrected');
+                const decode = item.decode_diagnostics || {};
+                const satdump = decode.satdump || {};
+                const packet = decode.packet_quality || {};
+                const qualityLabel = decode.label || 'Unknown';
+                const qualityScore = decode.score ?? '--';
+                const explanation = enhancementDescription(item);
                 const passBits = [
                     capture.pass_start,
                     capture.elevation && capture.elevation !== '--' ? `Elevation ${capture.elevation}` : null,
@@ -2417,10 +2578,20 @@
                                     <h3 class="text-sm font-semibold text-blue-100 truncate">${escapeHtml(title)}</h3>
                                     <p class="text-xs text-blue-300 truncate">${escapeHtml(capture.satellite || 'Unknown')}</p>
                                 </div>
-                                ${item.is_primary ? '<span class="diagnostic-badge"><i class="ph-fill ph-star"></i> Primary</span>' : ''}
+                                <span class="quality-badge ${qualityClass(qualityLabel)}">${escapeHtml(qualityLabel)} ${escapeHtml(qualityScore)}/100</span>
                             </div>
                             <p class="text-xs text-blue-200 leading-relaxed">${escapeHtml(passBits.join(' | ') || '--')}</p>
                             <p class="text-xs text-blue-300 mt-1">${escapeHtml(category)}${imageBits.length ? ` | ${escapeHtml(imageBits.join(' | '))}` : ''}</p>
+                            ${item.is_primary ? '<span class="diagnostic-badge mt-2"><i class="ph-fill ph-star"></i> Primary</span>' : ''}
+                            <p class="text-xs text-blue-200 mt-2 leading-relaxed">${escapeHtml(explanation || 'Satellite image product.')}</p>
+                            <div class="decode-metric-grid mt-3">
+                                <div class="decode-metric"><span>Avg SNR</span><strong>${escapeHtml(formatMetric(satdump.avg_snr_db, ' dB'))}</strong></div>
+                                <div class="decode-metric"><span>BER</span><strong>${escapeHtml(formatSmallNumber(satdump.avg_ber, 3))}</strong></div>
+                                <div class="decode-metric"><span>Sync Loss</span><strong>${escapeHtml(formatMetric(packet.sync_loss_percent, '%'))}</strong></div>
+                                <div class="decode-metric"><span>Line Complete</span><strong>${escapeHtml(formatMetric(packet.line_completeness_percent, '%'))}</strong></div>
+                            </div>
+                            <p class="text-xs text-amber-100 mt-3 leading-relaxed"><span class="font-semibold">Why:</span> ${escapeHtml(decode.why || 'No decode explanation available yet.')}</p>
+                            <p class="text-[10px] text-blue-300 mt-2 leading-relaxed">CADU frames: ${escapeHtml(packet.estimated_cadu_frames ?? '--')} | Estimated missing lines: ${escapeHtml(packet.estimated_missing_lines ?? '--')}</p>
                         </div>
                     </article>`;
             }).join('');
@@ -2437,13 +2608,16 @@
                 if (res.status !== 'ok') throw new Error('Invalid diagnostics response');
                 meteorDiagnosticsImages = Array.isArray(res.images) ? res.images : [];
                 meteorDiagnosticsLoaded = true;
+                renderReceiverSummary(res.receiver_diagnostics);
                 renderMeteorDiagnostics(meteorDiagnosticsImages);
                 const first = meteorDiagnosticsImages[0] || {};
                 const firstCapture = first.capture || {};
-                if (meteorDiagnosticsCountEl) meteorDiagnosticsCountEl.textContent = `${meteorDiagnosticsImages.length} shown`;
+                const scores = meteorDiagnosticsImages.map((item) => Number(item.decode_diagnostics?.score)).filter(Number.isFinite);
+                const avgScore = scores.length ? ` | avg ${Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)}/100` : '';
+                if (meteorDiagnosticsCountEl) meteorDiagnosticsCountEl.textContent = `${meteorDiagnosticsImages.length} shown${avgScore}`;
                 if (meteorDiagnosticsLatestSatEl) meteorDiagnosticsLatestSatEl.textContent = firstCapture.satellite || '--';
                 if (meteorDiagnosticsLatestPassEl) meteorDiagnosticsLatestPassEl.textContent = firstCapture.pass_start || '--';
-                if (meteorDiagnosticsUpdatedEl) meteorDiagnosticsUpdatedEl.textContent = formatDiagnosticUpdated(res.updated_at);
+                if (meteorDiagnosticsUpdatedEl) meteorDiagnosticsUpdatedEl.textContent = formatDiagnosticUpdated(res.receiver_diagnostics?.generated_at || res.updated_at);
                 if (meteorDiagnosticsStatusEl) meteorDiagnosticsStatusEl.textContent = `Loaded ${meteorDiagnosticsImages.length} recent METEOR weather images.`;
             } catch (err) {
                 if (meteorDiagnosticsStatusEl) meteorDiagnosticsStatusEl.textContent = 'Meteor diagnostics unavailable.';
