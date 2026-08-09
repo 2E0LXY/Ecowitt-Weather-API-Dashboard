@@ -571,6 +571,56 @@ async def compute_thunderstorm_risk():
     }
 
 
+async def compute_derived_metrics():
+    try:
+        payload = await fetch_current_from_ecowitt()
+        d = payload.get("data", {})
+    except Exception as exc:
+        return {"status": "error", "error": str(exc)}
+    def g(s, f): return to_float(d.get(s, {}).get(f, {}).get("value"))
+    T_f=g("outdoor","temperature"); RH=g("outdoor","humidity")
+    Dp_f=g("outdoor","dew_point"); P_in=g("pressure","absolute")
+    solar=g("solar_and_uvi","solar"); wind=g("wind","wind_speed")
+    result = {"status":"ok","generated_at":datetime.now(timezone.utc).isoformat()}
+    if T_f is not None and RH is not None:
+        T_c=(T_f-32)*5/9; T_k=T_c+273.15
+        es_kpa=0.6108*math.exp(17.27*T_c/(T_c+237.3))
+        ea_kpa=es_kpa*RH/100
+        vpd=round(es_kpa-ea_kpa,3)
+        if vpd<0.4: vl="Low (humid)"
+        elif vpd<0.8: vl="Optimal"
+        elif vpd<1.2: vl="Mild stress"
+        elif vpd<1.6: vl="Moderate stress"
+        else: vl="High stress (very dry)"
+        result["vpd"]={"value_kpa":vpd,"es_kpa":round(es_kpa,3),"ea_kpa":round(ea_kpa,3),"label":vl}
+        if Dp_f is not None:
+            Dp_c=(Dp_f-32)*5/9; spread=T_c-Dp_c
+            lcl_ft=round(spread*400); lcl_m=round(spread*122)
+            if lcl_ft<1000: ll="Ceiling"
+            elif lcl_ft<3000: ll="Low cloud"
+            elif lcl_ft<8000: ll="Moderate height"
+            else: ll="High cloud / clear"
+            result["cloud_base"]={"lcl_ft":lcl_ft,"lcl_m":lcl_m,"temp_dew_spread_c":round(spread,1),"label":ll}
+        if P_in is not None:
+            P_hpa=P_in*33.8639; e_hpa=ea_kpa*10
+            N=round((77.6*P_hpa/T_k)+(3.73e5*e_hpa/T_k**2),1)
+            if N<280: nl="Poor propagation"
+            elif N<300: nl="Below average"
+            elif N<320: nl="Normal"
+            elif N<360: nl="Enhanced / ducting possible"
+            else: nl="Strong ducting conditions"
+            result["radio_refractivity"]={"N":N,"label":nl}
+        if solar is not None and wind is not None and P_in is not None:
+            P_hpa=P_in*33.8639; Rs_mj=solar*0.0864; Rn=0.77*Rs_mj
+            Delta=4098*es_kpa/(T_c+237.3)**2; gamma=0.000665*P_hpa/10
+            wind_ms=wind*0.44704
+            u2=wind_ms*(4.87/math.log(67.8*10-5.42)) if wind_ms>0 else 0
+            denom=Delta+gamma*(1+0.34*u2)
+            ET0=max(0.0,round((0.408*Delta*Rn+gamma*900/(T_c+273)*u2*(es_kpa-ea_kpa))/denom,2)) if denom>0 else 0.0
+            result["et0"]={"value_mm_day":ET0,"solar_input_wm2":round(solar,1),"u2_ms":round(u2,2),"label":f"{ET0:.1f} mm/day"}
+    return result
+
+
 def _safe_float(value):
     try:
         if value is None or value == "":
@@ -1559,6 +1609,11 @@ async def api_thunderstorm():
     return await compute_thunderstorm_risk()
 
 
+@app.get("/api/derived")
+async def api_derived():
+    return await compute_derived_metrics()
+
+
 @app.get("/api/nowcast")
 async def api_nowcast():
     return await compute_nowcast()
@@ -1787,6 +1842,12 @@ async def api_ai_forecast():
         }
     except Exception as exc:
         context_payload["thunderstorm_risk"] = {"error": str(exc)}
+
+    try:
+        derived = await compute_derived_metrics()
+        context_payload["derived_metrics"] = {"vpd_kpa":derived.get("vpd",{}).get("value_kpa"),"vpd_label":derived.get("vpd",{}).get("label"),"cloud_base_ft":derived.get("cloud_base",{}).get("lcl_ft"),"cloud_base_label":derived.get("cloud_base",{}).get("label"),"radio_refractivity_N":derived.get("radio_refractivity",{}).get("N"),"radio_refractivity_label":derived.get("radio_refractivity",{}).get("label"),"et0_mm_day":derived.get("et0",{}).get("value_mm_day")}
+    except Exception as exc:
+        context_payload["derived_metrics"] = {"error": str(exc)}
 
     in_retry_cooldown = _ai_last_failure_ts > 0 and (now - _ai_last_failure_ts) < AI_RETRY_COOLDOWN_SECONDS
     if in_retry_cooldown:

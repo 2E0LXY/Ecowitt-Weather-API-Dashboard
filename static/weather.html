@@ -612,37 +612,6 @@
             <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
                 <div>
                     <h2 class="text-lg font-semibold text-blue-200 flex items-center gap-2">
-                        <i class="ph-fill ph-radar"></i> Local Nowcast <span class="text-sm font-normal text-blue-300">&mdash; next 1&ndash;3 hours</span>
-                    </h2>
-                    <p class="text-xs text-blue-300 mt-0.5">Self-computed from our own pressure trend + upwind regional stations &mdash; no external forecast service</p>
-                </div>
-                <span id="nowcast-risk-badge" class="self-start md:self-auto px-3 py-1.5 text-sm font-semibold rounded-full bg-gray-500/20 text-gray-300 border border-gray-500/30">Loading...</span>
-            </div>
-            <p id="nowcast-message" class="text-sm text-blue-100 mb-4">Computing nowcast...</p>
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                <div class="rounded-lg bg-white/5 border border-white/10 p-3">
-                    <p class="text-blue-200 text-xs">Pressure (3h)</p>
-                    <p id="nowcast-pressure-trend" class="font-semibold">--</p>
-                </div>
-                <div class="rounded-lg bg-white/5 border border-white/10 p-3">
-                    <p class="text-blue-200 text-xs">Upwind Sector</p>
-                    <p id="nowcast-upwind-sector" class="font-semibold">--</p>
-                </div>
-                <div class="rounded-lg bg-white/5 border border-white/10 p-3">
-                    <p class="text-blue-200 text-xs">Nearest Upwind Rain</p>
-                    <p id="nowcast-upwind-rain" class="font-semibold">--</p>
-                </div>
-                <div class="rounded-lg bg-white/5 border border-white/10 p-3">
-                    <p class="text-blue-200 text-xs">Estimated Arrival</p>
-                    <p id="nowcast-eta" class="font-semibold">--</p>
-                </div>
-            </div>
-        </section>
-
-        <section class="glass-card p-5 mb-6 live-only">
-            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
-                <div>
-                    <h2 class="text-lg font-semibold text-blue-200 flex items-center gap-2">
                         <i class="ph-fill ph-lightning text-yellow-400"></i> Thunderstorm Risk
                     </h2>
                     <p class="text-xs text-blue-300 mt-0.5">WH57 sensor (live strikes) + UKMO atmospheric instability (CAPE/CIN) &mdash; no external forecast text used</p>
@@ -677,6 +646,37 @@
                     <span id="cape-bar-start">--</span>
                     <span class="text-yellow-400">300 = moderate &nbsp; 1000 = elevated &nbsp; 2000 = severe</span>
                     <span id="cape-bar-end">--</span>
+                </div>
+            </div>
+        </section>
+
+        <section class="glass-card p-5 mb-6 live-only">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
+                <div>
+                    <h2 class="text-lg font-semibold text-blue-200 flex items-center gap-2">
+                        <i class="ph-fill ph-radar"></i> Local Nowcast <span class="text-sm font-normal text-blue-300">&mdash; next 1&ndash;3 hours</span>
+                    </h2>
+                    <p class="text-xs text-blue-300 mt-0.5">Self-computed from our own pressure trend + upwind regional stations &mdash; no external forecast service</p>
+                </div>
+                <span id="nowcast-risk-badge" class="self-start md:self-auto px-3 py-1.5 text-sm font-semibold rounded-full bg-gray-500/20 text-gray-300 border border-gray-500/30">Loading...</span>
+            </div>
+            <p id="nowcast-message" class="text-sm text-blue-100 mb-4">Computing nowcast...</p>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div class="rounded-lg bg-white/5 border border-white/10 p-3">
+                    <p class="text-blue-200 text-xs">Pressure (3h)</p>
+                    <p id="nowcast-pressure-trend" class="font-semibold">--</p>
+                </div>
+                <div class="rounded-lg bg-white/5 border border-white/10 p-3">
+                    <p class="text-blue-200 text-xs">Upwind Sector</p>
+                    <p id="nowcast-upwind-sector" class="font-semibold">--</p>
+                </div>
+                <div class="rounded-lg bg-white/5 border border-white/10 p-3">
+                    <p class="text-blue-200 text-xs">Nearest Upwind Rain</p>
+                    <p id="nowcast-upwind-rain" class="font-semibold">--</p>
+                </div>
+                <div class="rounded-lg bg-white/5 border border-white/10 p-3">
+                    <p class="text-blue-200 text-xs">Estimated Arrival</p>
+                    <p id="nowcast-eta" class="font-semibold">--</p>
                 </div>
             </div>
         </section>
@@ -817,6 +817,43 @@
                             </div>
                         </div>
                     </section>
+
+                    <!-- Derived Metrics Card -->
+                    <div class="glass-card p-6">
+                        <h2 class="text-lg font-semibold text-blue-200 mb-4 flex items-center gap-2">
+                            <i class="ph-fill ph-atom text-purple-400"></i> Derived Metrics
+                        </h2>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="rounded-lg bg-white/5 border border-white/10 p-3">
+                                <p class="text-xs text-blue-200 mb-1 flex items-center gap-1"><i class="ph-fill ph-broadcast text-blue-400"></i> Radio Refractivity</p>
+                                <p class="text-2xl font-bold" id="derived-N">--</p>
+                                <p class="text-xs text-blue-300">N-units</p>
+                                <div id="scale-N" class="flex gap-0.5 mt-2 h-1.5 w-full"></div>
+                                <p class="text-[10px] text-blue-300 mt-1" id="derived-N-label">--</p>
+                            </div>
+                            <div class="rounded-lg bg-white/5 border border-white/10 p-3">
+                                <p class="text-xs text-blue-200 mb-1 flex items-center gap-1"><i class="ph-fill ph-cloud text-sky-400"></i> Cloud Base (LCL)</p>
+                                <p class="text-2xl font-bold" id="derived-lcl-ft">--</p>
+                                <p class="text-xs text-blue-300" id="derived-lcl-m">-- m</p>
+                                <div id="scale-lcl" class="flex gap-0.5 mt-2 h-1.5 w-full"></div>
+                                <p class="text-[10px] text-blue-300 mt-1" id="derived-lcl-label">--</p>
+                            </div>
+                            <div class="rounded-lg bg-white/5 border border-white/10 p-3">
+                                <p class="text-xs text-blue-200 mb-1 flex items-center gap-1"><i class="ph-fill ph-drop-half text-teal-400"></i> Vapour Pressure Deficit</p>
+                                <p class="text-2xl font-bold" id="derived-vpd">--</p>
+                                <p class="text-xs text-blue-300">kPa</p>
+                                <div id="scale-vpd" class="flex gap-0.5 mt-2 h-1.5 w-full"></div>
+                                <p class="text-[10px] text-blue-300 mt-1" id="derived-vpd-label">--</p>
+                            </div>
+                            <div class="rounded-lg bg-white/5 border border-white/10 p-3">
+                                <p class="text-xs text-blue-200 mb-1 flex items-center gap-1"><i class="ph-fill ph-plant text-green-400"></i> Evapotranspiration (ET0)</p>
+                                <p class="text-2xl font-bold" id="derived-et0">--</p>
+                                <p class="text-xs text-blue-300">mm / day</p>
+                                <div id="scale-et0" class="flex gap-0.5 mt-2 h-1.5 w-full"></div>
+                                <p class="text-[10px] text-blue-300 mt-1" id="derived-et0-label">--</p>
+                            </div>
+                        </div>
+                    </div>
 
                     <!-- Sunrise / Daylight Card -->
                     <div class="glass-card p-6">
