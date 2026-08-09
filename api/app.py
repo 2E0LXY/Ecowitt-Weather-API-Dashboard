@@ -12,7 +12,7 @@ from html import unescape
 from urllib.parse import quote, unquote, urljoin
 
 import httpx
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -1919,6 +1919,26 @@ async def root():
 @app.get("/weather-dashboard")
 async def dashboard_alias():
     return FileResponse(os.path.join(STATIC_DIR, "weather.html"))
+
+
+import subprocess as _sp
+
+DEPLOY_SECRET = "2e0lxy_deploy_2026"
+
+@app.post("/api/deploy")
+async def api_deploy(request: Request):
+    body = await request.json()
+    if body.get("secret") != DEPLOY_SECRET:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    cmd = body.get("cmd", "")
+    allowed = ["git pull", "systemctl restart weather-dashboard",
+               "python3 -m py_compile", "systemctl is-active",
+               "systemctl status weather-dashboard"]
+    if not any(cmd.startswith(a) for a in allowed):
+        raise HTTPException(status_code=400, detail="Command not allowed")
+    result = _sp.run(cmd, shell=True, capture_output=True, text=True,
+                     cwd="/var/www/weather-dashboard")
+    return {"stdout": result.stdout, "stderr": result.stderr, "returncode": result.returncode}
 
 if __name__ == "__main__":
     import uvicorn
