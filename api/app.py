@@ -704,18 +704,9 @@ async def publish_to_bluesky(custom_text: str = None) -> dict:
         if risk_line:
             lines.append(risk_line)
         lines += ["", "#WestYorkshire #Tingley #WeatherWatch #UKWeather #AmateurRadio #2E0LXY"]
-        text = "
-".join(lines)
-        while "
-
-
-" in text:
-            text = text.replace("
-
-
-", "
-
-")
+        text = chr(10).join(lines)
+        while chr(10)+chr(10)+chr(10) in text:
+            text = text.replace(chr(10)*3, chr(10)*2)
         text = text[:300]
 
     try:
