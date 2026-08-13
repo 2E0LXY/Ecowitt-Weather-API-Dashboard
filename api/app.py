@@ -2311,26 +2311,27 @@ async def api_deploy(request: Request):
 
 
 async def _bluesky_scheduler():
-    """Post weather to Bluesky at 08:00 and 20:00 UTC every day."""
+    """Post weather + propagation to Bluesky at 07:00 and 19:00 UK local time."""
     import asyncio as _asyncio
     from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+    try:
+        from zoneinfo import ZoneInfo as _ZI
+        _UK = _ZI("Europe/London")
+    except Exception:
+        # Fallback: UTC+1 approximation (BST). Not perfect but close enough.
+        _UK = _tz.utc
+
     while True:
-        now = _dt.now(_tz.utc)
-        # Next post time: 08:00 or 20:00 UTC
-        for hour in [8, 20]:
-            candidate = now.replace(hour=hour, minute=0, second=0, microsecond=0)
-            if candidate <= now:
-                candidate += _td(days=1)
-        # Pick the nearest upcoming slot
+        now_uk = _dt.now(_UK)
         slots = []
-        for hour in [8, 20]:
-            candidate = now.replace(hour=hour, minute=0, second=0, microsecond=0)
-            if candidate <= now:
+        for hour in [7, 19]:
+            candidate = now_uk.replace(hour=hour, minute=0, second=0, microsecond=0)
+            if candidate <= now_uk:
                 candidate += _td(days=1)
             slots.append(candidate)
         next_post = min(slots)
-        wait_seconds = (next_post - now).total_seconds()
-        print(f"[Bluesky scheduler] Next post at {next_post.strftime('%H:%M UTC')} in {wait_seconds/3600:.1f}h")
+        wait_seconds = (next_post - now_uk).total_seconds()
+        print(f"[Bluesky scheduler] Next post at {next_post.strftime('%H:%M %Z')} in {wait_seconds/3600:.1f}h")
         await _asyncio.sleep(wait_seconds)
         try:
             result = await publish_to_bluesky()
