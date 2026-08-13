@@ -707,7 +707,29 @@ async def publish_to_bluesky(custom_text: str = None) -> dict:
             lines.append(f"☀️ Solar {solar:.0f} W/m²  UV {uv:.0f}")
         if risk_line:
             lines.append(risk_line)
-        lines += ["", "#WestYorkshire #Tingley #WeatherWatch #UKWeather #AmateurRadio #2E0LXY"]
+                # Add compact propagation section
+        try:
+            prop = await fetch_propagation_data()
+            sfi_v = prop.get("sfi")
+            kp_v  = prop.get("kp_current")
+            N_v   = prop.get("N_units")
+            open_b = prop.get("open_hf_bands", [])
+            v2m   = prop.get("bands", {}).get("vhf_uhf", {}).get("2m", {}).get("status", "")
+            if sfi_v or N_v:
+                lines.append("")
+                lines.append(f"📡 SFI={sfi_v} Kp={kp_v:.1f}" if sfi_v and kp_v else "📡 Propagation")
+                if open_b:
+                    lines.append(f"HF: {chr(32).join(open_b)} open")
+                else:
+                    lines.append("HF: Low bands only")
+                vhf_line = f"VHF/UHF: {v2m}" if v2m and v2m != "Normal" else ""
+                if N_v and N_v > 310:
+                    vhf_line = f"2m/70cm/23cm: {'Ducting' if N_v > 320 else 'Enhanced'} (N={N_v:.0f})"
+                if vhf_line:
+                    lines.append(vhf_line)
+        except Exception:
+            pass
+        lines += ["", "#WestYorkshire #Tingley #WeatherWatch #UKWeather #AmateurRadio #2E0LXY #HamRadio"]
         text = chr(10).join(lines)
         while chr(10)+chr(10)+chr(10) in text:
             text = text.replace(chr(10)*3, chr(10)*2)
@@ -741,6 +763,198 @@ async def publish_to_bluesky(custom_text: str = None) -> dict:
         "posted_at": datetime.now(timezone.utc).isoformat(),
     }
 
+
+
+# ── Propagation config ─────────────────────────────────────────────────────
+NOAA_WWV_URL  = "https://services.swpc.noaa.gov/text/wwv.txt"
+NOAA_KP_URL   = "https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json"
+NOAA_3DAY_URL = "https://services.swpc.noaa.gov/text/3-day-geomag-forecast.txt"
+PROP_CACHE_TTL = int(os.getenv("PROP_CACHE_TTL_SECONDS", "1800"))
+_prop_cache = {"ts": 0.0, "payload": None}
+
+
+async def fetch_propagation_data(force=False):
+    """Fetch solar/geomagnetic indices from NOAA Space Weather Prediction Center.
+    Free, no API key, public domain data. Cached 30 minutes."""
+    now = time.time()
+    if not force and _prop_cache["payload"] and (now - _prop_cache["ts"] < PROP_CACHE_TTL):
+        cached = deepcopy(_prop_cache["payload"])
+        cached["cached"] = True
+        return cached
+
+    sfi = kp = a_index = None
+    kp_forecast = []
+    storm_probs = {}
+
+    # Parse WWV text for SFI and A-index
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            wwv_resp = await client.get(NOAA_WWV_URL)
+            wwv_text = wwv_resp.text
+            for line in wwv_text.splitlines():
+                if "Solar flux" in line and "A-index" in line:
+                    import re as _re
+                    m = _re.search(r"Solar flux (\d+)", line)
+                    if m: sfi = int(m.group(1))
+                    m = _re.search(r"A-index (\d+)", line)
+                    if m: a_index = int(m.group(1))
+                if "K-index at" in line:
+                    m = _re.search(r"was ([\d.]+)", line)
+                    if m: kp = float(m.group(1))
+    except Exception:
+        pass
+
+    # Get Kp time series (last 8 readings = 24h)
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            kp_resp = await client.get(NOAA_KP_URL)
+            kp_data = kp_resp.json()
+            kp_forecast = [
+                {"time": row["time_tag"], "kp": row["Kp"]}
+                for row in kp_data[-8:]
+            ]
+            if kp is None and kp_data:
+                kp = kp_data[-1]["Kp"]
+    except Exception:
+        pass
+
+    # Get 3-day forecast Ap/storm probabilities
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            fc_resp = await client.get(NOAA_3DAY_URL)
+            fc_text = fc_resp.text
+            import re as _re
+            for line in fc_text.splitlines():
+                if "Predicted Ap" in line:
+                    m = _re.search(r"Predicted Ap .+?(\d+)-(\d+)-(\d+)", line)
+                    if m:
+                        storm_probs["predicted_ap"] = [int(m.group(1)), int(m.group(2)), int(m.group(3))]
+                if line.startswith("Active ") and "%" not in line and "/" in line:
+                    vals = line.split()
+                    if len(vals) >= 2:
+                        storm_probs["active_pct"] = vals[1]
+                if line.startswith("Minor storm"):
+                    vals = line.split()
+                    if len(vals) >= 3:
+                        storm_probs["minor_storm_pct"] = vals[2]
+    except Exception:
+        pass
+
+    # ── Band condition assessment ─────────────────────────────────────────
+    # Get our own N-units for VHF/UHF/microwave
+    N = None
+    cape = 0.0
+    try:
+        derived = await compute_derived_metrics()
+        N = derived.get("radio_refractivity", {}).get("N")
+        ts = await fetch_cape_data()
+        cape = ts.get("current", {}).get("cape_j_kg", 0.0)
+    except Exception:
+        pass
+
+    import calendar as _cal
+    current_month = datetime.now().month
+
+    def hf_band(freq_mhz):
+        """Return (status, icon) for an HF band based on SFI + Kp."""
+        if sfi is None or kp is None:
+            return "Unknown", "❓"
+        geo_ok = kp < 4
+        geo_marginal = kp < 5
+        if freq_mhz <= 3.8:    # 80m/160m
+            s = "Good (night)" if geo_ok else "Disturbed"
+            return s, "✅" if geo_ok else "⚠️"
+        elif freq_mhz <= 7.3:  # 40m
+            s = "Good" if geo_ok else "Disturbed"
+            return s, "✅" if geo_ok else "⚠️"
+        elif freq_mhz <= 14.35: # 20m
+            if sfi >= 80 and geo_ok:   return "Open", "✅"
+            elif sfi >= 70 and geo_marginal: return "Marginal", "🟡"
+            else: return "Poor", "❌"
+        elif freq_mhz <= 18.17: # 17m
+            if sfi >= 90 and geo_ok:   return "Open", "✅"
+            elif sfi >= 80 and geo_marginal: return "Marginal", "🟡"
+            else: return "Poor", "❌"
+        elif freq_mhz <= 21.45: # 15m
+            if sfi >= 100 and geo_ok:  return "Open", "✅"
+            elif sfi >= 90 and geo_marginal: return "Marginal", "🟡"
+            else: return "Poor", "❌"
+        elif freq_mhz <= 24.99: # 12m
+            if sfi >= 120 and kp < 3:  return "Open", "✅"
+            elif sfi >= 100 and geo_ok: return "Marginal", "🟡"
+            else: return "Poor", "❌"
+        elif freq_mhz <= 29.7:  # 10m
+            if sfi >= 140 and kp < 3:  return "Open", "✅"
+            elif sfi >= 120 and geo_ok: return "Marginal", "🟡"
+            else: return "Poor", "❌"
+        elif freq_mhz <= 54:    # 6m
+            # Sporadic E: peak May-Aug, possible Sep
+            es_season = current_month in [5, 6, 7, 8, 9]
+            f2 = sfi >= 130 and kp < 3
+            if f2: return "F2 possible", "✅"
+            elif es_season: return "Es season", "🟡"
+            else: return "Quiet", "⬜"
+        return "Unknown", "❓"
+
+    def vhf_uhf_status(freq_label, n_threshold):
+        if N is None: return "Unknown", "❓"
+        if N >= n_threshold + 40: return "Strong ducting", "🔴"
+        elif N >= n_threshold: return "Ducting possible", "🟡"
+        elif N >= n_threshold - 20: return "Slightly enhanced", "🟢"
+        else: return "Normal", "⬜"
+
+    hf_80m,  ico_80m  = hf_band(3.8)
+    hf_40m,  ico_40m  = hf_band(7.1)
+    hf_20m,  ico_20m  = hf_band(14.2)
+    hf_17m,  ico_17m  = hf_band(18.1)
+    hf_15m,  ico_15m  = hf_band(21.2)
+    hf_12m,  ico_12m  = hf_band(24.9)
+    hf_10m,  ico_10m  = hf_band(28.5)
+    hf_6m,   ico_6m   = hf_band(50.0)
+
+    v2m,   ico_2m   = vhf_uhf_status("2m",   320)
+    v70cm, ico_70cm = vhf_uhf_status("70cm", 315)
+    v23cm, ico_23cm = vhf_uhf_status("23cm", 310)
+
+    # Overall HF summary
+    open_bands = [b for b, (s, i) in [("10m", (hf_10m, ico_10m)), ("12m", (hf_12m, ico_12m)),
+                  ("15m", (hf_15m, ico_15m)), ("17m", (hf_17m, ico_17m)),
+                  ("20m", (hf_20m, ico_20m)), ("6m", (hf_6m, ico_6m))] if s in ("Open", "F2 possible", "Es season")]
+
+    payload = {
+        "status": "ok",
+        "source": "NOAA Space Weather Prediction Center (public domain)",
+        "cached": False,
+        "sfi": sfi,
+        "kp_current": kp,
+        "a_index": a_index,
+        "kp_24h": kp_forecast,
+        "storm_probs": storm_probs,
+        "N_units": N,
+        "cape_j_kg": cape,
+        "bands": {
+            "hf": {
+                "80m":  {"status": hf_80m,  "icon": ico_80m},
+                "40m":  {"status": hf_40m,  "icon": ico_40m},
+                "20m":  {"status": hf_20m,  "icon": ico_20m},
+                "17m":  {"status": hf_17m,  "icon": ico_17m},
+                "15m":  {"status": hf_15m,  "icon": ico_15m},
+                "12m":  {"status": hf_12m,  "icon": ico_12m},
+                "10m":  {"status": hf_10m,  "icon": ico_10m},
+                "6m":   {"status": hf_6m,   "icon": ico_6m},
+            },
+            "vhf_uhf": {
+                "2m":   {"status": v2m,   "icon": ico_2m},
+                "70cm": {"status": v70cm, "icon": ico_70cm},
+                "23cm": {"status": v23cm, "icon": ico_23cm},
+            },
+        },
+        "open_hf_bands": open_bands,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    _prop_cache["payload"] = deepcopy(payload)
+    _prop_cache["ts"] = time.time()
+    return payload
 
 def _safe_float(value):
     try:
@@ -1735,6 +1949,11 @@ async def api_derived():
     return await compute_derived_metrics()
 
 
+@app.get("/api/propagation")
+async def api_propagation(force: bool = False):
+    return await fetch_propagation_data(force=force)
+
+
 @app.post("/api/publish/bluesky")
 async def api_publish_bluesky(request: Request):
     body = {}
@@ -1983,6 +2202,21 @@ async def api_ai_forecast():
         context_payload["derived_metrics"] = {"vpd_kpa":derived.get("vpd",{}).get("value_kpa"),"vpd_label":derived.get("vpd",{}).get("label"),"cloud_base_ft":derived.get("cloud_base",{}).get("lcl_ft"),"cloud_base_label":derived.get("cloud_base",{}).get("label"),"radio_refractivity_N":derived.get("radio_refractivity",{}).get("N"),"radio_refractivity_label":derived.get("radio_refractivity",{}).get("label"),"et0_mm_day":derived.get("et0",{}).get("value_mm_day")}
     except Exception as exc:
         context_payload["derived_metrics"] = {"error": str(exc)}
+
+    try:
+        prop = await fetch_propagation_data()
+        context_payload["propagation"] = {
+            "sfi": prop.get("sfi"),
+            "kp": prop.get("kp_current"),
+            "a_index": prop.get("a_index"),
+            "N_units": prop.get("N_units"),
+            "open_hf_bands": prop.get("open_hf_bands"),
+            "vhf_2m": prop.get("bands", {}).get("vhf_uhf", {}).get("2m", {}).get("status"),
+            "vhf_70cm": prop.get("bands", {}).get("vhf_uhf", {}).get("70cm", {}).get("status"),
+            "vhf_23cm": prop.get("bands", {}).get("vhf_uhf", {}).get("23cm", {}).get("status"),
+        }
+    except Exception as exc:
+        context_payload["propagation"] = {"error": str(exc)}
 
     in_retry_cooldown = _ai_last_failure_ts > 0 and (now - _ai_last_failure_ts) < AI_RETRY_COOLDOWN_SECONDS
     if in_retry_cooldown:
