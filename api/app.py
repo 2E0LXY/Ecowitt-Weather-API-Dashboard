@@ -695,14 +695,14 @@ async def publish_to_bluesky(custom_text: str = None) -> dict:
         if T_c is not None and RH is not None:
             lines.append(f"🌡 {T_c:.1f}°C ({T_f:.1f}°F)  💧 {RH:.0f}%")
         if wind_kmh is not None:
-            wline = f"🌬 {wind_kmh:.1f} km/h {wdir_label}"
+            wline = f"💨 {wind_kmh:.1f} km/h {wdir_label}"
             if gust_kmh:
                 wline += f"  Gust {gust_kmh:.1f}"
             lines.append(wline)
         if rain_mm is not None:
             lines.append(f"🌧 Rain: {rain_mm:.1f} mm today")
         if p_hpa is not None:
-            lines.append(f"📊 {p_hpa:.1f} hPa")
+            lines.append(f"📈 Pressure: {p_hpa:.1f} hPa")
         if solar and uv:
             lines.append(f"☀️ Solar {solar:.0f} W/m²  UV {uv:.0f}")
         if risk_line:
