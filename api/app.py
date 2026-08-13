@@ -1738,7 +1738,11 @@ async def api_publish_bluesky(request: Request):
         body = await request.json()
     except Exception:
         pass
-    return await publish_to_bluesky(custom_text=body.get("text"))
+    try:
+        return await publish_to_bluesky(custom_text=body.get("text"))
+    except Exception as exc:
+        import traceback
+        return {"status": "error", "error": str(exc), "trace": traceback.format_exc()[-500:]}
 
 
 @app.get("/api/nowcast")
