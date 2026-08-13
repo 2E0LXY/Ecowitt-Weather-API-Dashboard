@@ -2075,6 +2075,41 @@ async def api_deploy(request: Request):
                      cwd="/var/www/weather-dashboard")
     return {"stdout": result.stdout, "stderr": result.stderr, "returncode": result.returncode}
 
+
+async def _bluesky_scheduler():
+    """Post weather to Bluesky at 08:00 and 20:00 UTC every day."""
+    import asyncio as _asyncio
+    from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+    while True:
+        now = _dt.now(_tz.utc)
+        # Next post time: 08:00 or 20:00 UTC
+        for hour in [8, 20]:
+            candidate = now.replace(hour=hour, minute=0, second=0, microsecond=0)
+            if candidate <= now:
+                candidate += _td(days=1)
+        # Pick the nearest upcoming slot
+        slots = []
+        for hour in [8, 20]:
+            candidate = now.replace(hour=hour, minute=0, second=0, microsecond=0)
+            if candidate <= now:
+                candidate += _td(days=1)
+            slots.append(candidate)
+        next_post = min(slots)
+        wait_seconds = (next_post - now).total_seconds()
+        print(f"[Bluesky scheduler] Next post at {next_post.strftime('%H:%M UTC')} in {wait_seconds/3600:.1f}h")
+        await _asyncio.sleep(wait_seconds)
+        try:
+            result = await publish_to_bluesky()
+            print(f"[Bluesky scheduler] Posted: {result.get('uri','')}")
+        except Exception as exc:
+            print(f"[Bluesky scheduler] Post failed: {exc}")
+
+
+@app.on_event("startup")
+async def start_bluesky_scheduler():
+    import asyncio as _asyncio
+    _asyncio.create_task(_bluesky_scheduler())
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=False)
