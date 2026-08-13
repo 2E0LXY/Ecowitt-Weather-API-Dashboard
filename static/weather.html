@@ -861,6 +861,45 @@
                         </div>
                     </div>
 
+                    <!-- Band Propagation Card -->
+                    <div class="glass-card p-6">
+                        <h2 class="text-lg font-semibold text-blue-200 mb-1 flex items-center gap-2">
+                            <i class="ph-fill ph-broadcast text-blue-400"></i> Band Propagation
+                        </h2>
+                        <p class="text-xs text-blue-300 mb-4">NOAA SFI/Kp + own N-units &mdash; <span id="prop-updated">loading...</span></p>
+
+                        <!-- Solar indices -->
+                        <div class="grid grid-cols-3 gap-3 mb-4">
+                            <div class="rounded-lg bg-white/5 border border-white/10 p-3 text-center">
+                                <p class="text-xs text-blue-200">Solar Flux</p>
+                                <p class="text-2xl font-bold" id="prop-sfi">--</p>
+                                <p class="text-xs text-blue-300">SFI</p>
+                            </div>
+                            <div class="rounded-lg bg-white/5 border border-white/10 p-3 text-center">
+                                <p class="text-xs text-blue-200">Kp Index</p>
+                                <p class="text-2xl font-bold" id="prop-kp">--</p>
+                                <p class="text-xs text-blue-300" id="prop-kp-label">--</p>
+                            </div>
+                            <div class="rounded-lg bg-white/5 border border-white/10 p-3 text-center">
+                                <p class="text-xs text-blue-200">A-Index</p>
+                                <p class="text-2xl font-bold" id="prop-a">--</p>
+                                <p class="text-xs text-blue-300">planetary</p>
+                            </div>
+                        </div>
+
+                        <!-- HF bands -->
+                        <p class="text-xs text-blue-200 uppercase tracking-wider mb-2">HF Bands</p>
+                        <div class="grid grid-cols-4 gap-1.5 mb-4 text-xs" id="prop-hf-grid">
+                            <div class="text-center">Loading...</div>
+                        </div>
+
+                        <!-- VHF/UHF/Microwave -->
+                        <p class="text-xs text-blue-200 uppercase tracking-wider mb-2">VHF / UHF / Microwave</p>
+                        <div class="grid grid-cols-3 gap-3" id="prop-vhf-grid">
+                            <div class="text-center text-xs text-blue-200">Loading...</div>
+                        </div>
+                    </div>
+
                     <!-- Sunrise / Daylight Card -->
                     <div class="glass-card p-6">
                         <h2 class="text-lg font-semibold text-blue-200 mb-4 flex items-center gap-2">
