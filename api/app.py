@@ -621,6 +621,132 @@ async def compute_derived_metrics():
     return result
 
 
+async def publish_to_bluesky(custom_text: str = None) -> dict:
+    """Authenticate with Bluesky AT Protocol and post current weather."""
+    if not BSKY_HANDLE or not BSKY_APP_PASSWORD:
+        return {"status": "error", "error": "Bluesky credentials not configured"}
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            auth_resp = await client.post(
+                f"{BSKY_API_BASE}/com.atproto.server.createSession",
+                json={"identifier": BSKY_HANDLE, "password": BSKY_APP_PASSWORD},
+            )
+            auth_resp.raise_for_status()
+            session = auth_resp.json()
+    except Exception as exc:
+        return {"status": "error", "error": f"Bluesky auth failed: {exc}"}
+
+    jwt = session["accessJwt"]
+    did = session["did"]
+
+    if custom_text:
+        text = custom_text[:300]
+    else:
+        try:
+            payload = await fetch_current_from_ecowitt()
+            d = payload.get("data", {})
+        except Exception as exc:
+            return {"status": "error", "error": f"Weather fetch failed: {exc}"}
+
+        def gv(s, f):
+            return to_float(d.get(s, {}).get(f, {}).get("value"))
+
+        T_f      = gv("outdoor", "temperature")
+        T_c      = (T_f - 32) * 5 / 9 if T_f else None
+        RH       = gv("outdoor", "humidity")
+        wind_mph = gv("wind", "wind_speed")
+        wind_kmh = wind_mph * 1.60934 if wind_mph else None
+        gust_mph = gv("wind", "wind_gust")
+        gust_kmh = gust_mph * 1.60934 if gust_mph else None
+        wind_dir = d.get("wind", {}).get("wind_direction", {}).get("value", "")
+        rain_in  = gv("rainfall", "daily")
+        rain_mm  = rain_in * 25.4 if rain_in is not None else None
+        p_inhg   = gv("pressure", "relative")
+        p_hpa    = p_inhg * 33.8639 if p_inhg else None
+        solar    = gv("solar_and_uvi", "solar")
+        uv       = gv("solar_and_uvi", "uvi")
+        strikes  = gv("lightning", "count")
+
+        _dirs = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"]
+        try:
+            wdir_label = _dirs[int((float(wind_dir) / 22.5) + 0.5) % 16]
+        except:
+            wdir_label = str(wind_dir) if wind_dir else "—"
+
+        try:
+            ts = await compute_thunderstorm_risk()
+            risk = ts.get("composite_risk_level", "")
+            risk_icons = {"low": "🟢", "moderate": "🟡", "elevated": "🟠",
+                          "moderate-capped": "🟡", "high-capped": "🟠", "high": "🔴"}
+            risk_line = f"⚡ {risk_icons.get(risk, '⚡')} {risk.replace('-', ' ').title()}"
+            if strikes and strikes > 0:
+                risk_line += f" ({int(strikes)} strikes)"
+        except:
+            risk_line = ""
+
+        now_dt = datetime.now()
+        date_str = now_dt.strftime("%d %b %H:%M BST")
+
+        lines = [f"🌦 Tingley, W.Yorks — {date_str}", ""]
+        if T_c is not None and RH is not None:
+            lines.append(f"🌡 {T_c:.1f}°C ({T_f:.1f}°F)  💧 {RH:.0f}%")
+        if wind_kmh is not None:
+            wline = f"🌬 {wind_kmh:.1f} km/h {wdir_label}"
+            if gust_kmh:
+                wline += f"  Gust {gust_kmh:.1f}"
+            lines.append(wline)
+        if rain_mm is not None:
+            lines.append(f"🌧 Rain: {rain_mm:.1f} mm today")
+        if p_hpa is not None:
+            lines.append(f"📊 {p_hpa:.1f} hPa")
+        if solar and uv:
+            lines.append(f"☀️ Solar {solar:.0f} W/m²  UV {uv:.0f}")
+        if risk_line:
+            lines.append(risk_line)
+        lines += ["", "#WestYorkshire #Tingley #WeatherWatch #UKWeather #AmateurRadio #2E0LXY"]
+        text = "
+".join(lines)
+        while "
+
+
+" in text:
+            text = text.replace("
+
+
+", "
+
+")
+        text = text[:300]
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            post_resp = await client.post(
+                f"{BSKY_API_BASE}/com.atproto.repo.createRecord",
+                headers={"Authorization": f"Bearer {jwt}"},
+                json={
+                    "repo": did,
+                    "collection": "app.bsky.feed.post",
+                    "record": {
+                        "$type": "app.bsky.feed.post",
+                        "text": text,
+                        "createdAt": datetime.now(timezone.utc).isoformat(),
+                    },
+                },
+            )
+            post_resp.raise_for_status()
+            result = post_resp.json()
+    except Exception as exc:
+        return {"status": "error", "error": f"Post failed: {exc}"}
+
+    return {
+        "status": "ok",
+        "uri": result.get("uri"),
+        "cid": result.get("cid"),
+        "text": text,
+        "posted_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 def _safe_float(value):
     try:
         if value is None or value == "":
@@ -1612,6 +1738,16 @@ async def api_thunderstorm():
 @app.get("/api/derived")
 async def api_derived():
     return await compute_derived_metrics()
+
+
+@app.post("/api/publish/bluesky")
+async def api_publish_bluesky(request: Request):
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
+    return await publish_to_bluesky(custom_text=body.get("text"))
 
 
 @app.get("/api/nowcast")
