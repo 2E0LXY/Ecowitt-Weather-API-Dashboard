@@ -64,6 +64,10 @@ CEFAS_CACHE_TTL_SECONDS = int(os.getenv("CEFAS_CACHE_TTL_SECONDS", "1800"))
 CAPE_API_BASE = "https://api.open-meteo.com/v1/forecast"
 CAPE_CACHE_TTL_SECONDS = int(os.getenv("CAPE_CACHE_TTL_SECONDS", "1800"))
 
+BSKY_HANDLE       = os.getenv("BSKY_HANDLE", "2e0lxy.bsky.social")
+BSKY_APP_PASSWORD = os.getenv("BSKY_APP_PASSWORD", "fnkz-fhqz-2ijg-3tab")
+BSKY_API_BASE     = "https://bsky.social/xrpc"
+
 STATIC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "static"))
 
 AI_CACHE_TTL_SECONDS = 900
