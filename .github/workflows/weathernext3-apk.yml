@@ -1,0 +1,84 @@
+name: Build WeatherNext 3 APK
+
+on:
+  push:
+    branches:
+      - weathernext3-apk-build-20260906
+    paths:
+      - 'weathernext3/**'
+      - '.github/workflows/weathernext3-apk.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: weathernext3/package.json
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
+
+      - name: Install web dependencies
+        working-directory: weathernext3
+        run: npm install --no-audit --no-fund
+
+      - name: Build web app
+        working-directory: weathernext3
+        run: npm run build
+
+      - name: Smoke-test built web entry
+        working-directory: weathernext3
+        run: |
+          test -s dist/index.html
+          grep -q '<div id="root"></div>' dist/index.html
+
+      - name: Create Android project
+        working-directory: weathernext3
+        run: npx cap add android
+
+      - name: Sync web build into Android
+        working-directory: weathernext3
+        run: npx cap sync android
+
+      - name: Build installable debug APK
+        working-directory: weathernext3/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Stage APK
+        run: |
+          mkdir -p output
+          cp weathernext3/android/app/build/outputs/apk/debug/app-debug.apk output/WeatherNext3-1.0.0-debug.apk
+          sha256sum output/WeatherNext3-1.0.0-debug.apk | tee output/SHA256.txt
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WeatherNext3-Android-APK
+          path: output/
+          if-no-files-found: error
+          retention-days: 30
