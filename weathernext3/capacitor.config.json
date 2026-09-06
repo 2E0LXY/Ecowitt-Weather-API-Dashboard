@@ -1,0 +1,9 @@
+{
+  "appId": "uk.co.weathernext.app",
+  "appName": "WeatherNext 3",
+  "webDir": "dist",
+  "backgroundColor": "#050914",
+  "android": {
+    "allowMixedContent": false
+  }
+}
