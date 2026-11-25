@@ -1,0 +1,130 @@
+diff --git a/api/app.py b/api/app.py
+index 7a46971..d37fb83 100644
+--- a/api/app.py
++++ b/api/app.py
+@@ -1725,6 +1725,25 @@ def choose_satellite_image_by_enhancement(images, enhancement):
+     return choose_satellite_image(weather)
+ 
+ 
++async def satellite_image_exists(client, image):
++    """True if the source server really serves this image (HEAD, then a 1-byte ranged GET if HEAD is refused)."""
++    try:
++        resp = await client.head(image["url"], timeout=6.0)
++        if resp.status_code in (405, 501):
++            resp = await client.get(image["url"], headers={"Range": "bytes=0-0"}, timeout=6.0)
++        return resp.status_code in (200, 206)
++    except httpx.HTTPError:
++        return False
++
++
++async def satellite_images_with_verified_derived(client, parsed, capture):
++    """Parsed images plus the derived SatDump ones that actually exist on the source server."""
++    known = {img.get("filename") for img in parsed}
++    extra = [img for img in derived_satdump_weather_images(capture) if img.get("filename") not in known]
++    verified = [img for img in extra if await satellite_image_exists(client, img)]
++    return unique_satellite_images(list(parsed) + verified)
++
++
+ async def fetch_latest_satellite_payload(force=False):
+     now = time.time()
+     if not force and _satellite_cache["payload"] and (now - _satellite_cache["ts"] < SATELLITE_CACHE_TTL_SECONDS):
+@@ -1742,7 +1761,7 @@ async def fetch_latest_satellite_payload(force=False):
+             detail_resp = await client.get(satellite_absolute_url(latest["detail_path"]))
+             detail_resp.raise_for_status()
+             images = parse_capture_images(detail_resp.text)
+-            images = unique_satellite_images(images + derived_satdump_weather_images(latest))
++            images = await satellite_images_with_verified_derived(client, images, latest)
+     except HTTPException: raise
+     except httpx.HTTPStatusError as exc: raise HTTPException(status_code=502, detail=f"Satellite HTTP error {exc.response.status_code}") from exc
+     except httpx.RequestError as exc: raise HTTPException(status_code=502, detail=f"Satellite request error: {exc}") from exc
+@@ -1759,7 +1778,7 @@ async def fetch_latest_satellite_payload(force=False):
+                     fb_resp = await fc.get(satellite_absolute_url(fallback_capture["detail_path"]))
+                     fb_resp.raise_for_status()
+                     fb_imgs = parse_capture_images(fb_resp.text)
+-                    fb_imgs = unique_satellite_images(fb_imgs + derived_satdump_weather_images(fallback_capture))
++                    fb_imgs = await satellite_images_with_verified_derived(fc, fb_imgs, fallback_capture)
+                 fb_weather = [i for i in fb_imgs if not i.get("is_polar")]
+                 if fb_weather:
+                     weather_imgs     = fb_weather
+@@ -1792,7 +1811,7 @@ async def fetch_satellite_ai_images():
+             detail_resp = await client.get(satellite_absolute_url(capture["detail_path"]))
+             detail_resp.raise_for_status()
+             images = parse_capture_images(detail_resp.text)
+-            images = unique_satellite_images(images + derived_satdump_weather_images(capture))
++            images = await satellite_images_with_verified_derived(client, images, capture)
+             chosen = choose_satellite_image_by_enhancement(images, SATELLITE_AI_IMAGE_ENHANCEMENT)
+             if not chosen: continue
+             image_resp = await client.get(chosen["url"])
+@@ -1924,7 +1943,10 @@ async def api_satellite_image(url: str = Query(...)):
+         async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+             resp = await client.get(image_url)
+             resp.raise_for_status()
+-    except httpx.HTTPStatusError as exc: raise HTTPException(status_code=502, detail=f"Satellite image HTTP error {exc.response.status_code}") from exc
++    except httpx.HTTPStatusError as exc:
++        if exc.response.status_code == 404:
++            raise HTTPException(status_code=404, detail="Satellite image not found at source") from exc
++        raise HTTPException(status_code=502, detail=f"Satellite image HTTP error {exc.response.status_code}") from exc
+     except httpx.RequestError as exc: raise HTTPException(status_code=502, detail=f"Satellite image request error: {exc}") from exc
+     return Response(content=resp.content, media_type=resp.headers.get("content-type","image/jpeg"), headers={"Cache-Control":"public,max-age=300"})
+ 
+diff --git a/static/weather.html b/static/weather.html
+index 6aed9ed..9e339c5 100644
+--- a/static/weather.html
++++ b/static/weather.html
+@@ -5,7 +5,7 @@
+     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+     <title>Ecowitt Live Weather Dashboard</title>
+     
+-    <script src="https://cdn.tailwindcss.com"></script>
++    <link rel="stylesheet" href="/weather-tailwind.css?v=20260902-production">
+     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+     <script src="https://unpkg.com/@phosphor-icons/web"></script>
+     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+@@ -494,6 +494,8 @@
+             padding: 12px 14px;
+         }
+     </style>
++    <link id="radio-theme-styles" rel="stylesheet" href="/radio-theme.css?v=20260822-spectrum">
++<link rel="stylesheet" href="/weather-approved.css?v=20260902-layout">
+ </head>
+ <body class="p-4 md:p-8 antialiased">
+ <canvas id="sky-canvas"></canvas>
+@@ -758,8 +760,9 @@
+                             </div>
+                         </div>
+                         
+-                        <div class="mt-6 pt-4 border-t border-white/10 flex justify-between items-center">
++                        <div class="mt-6 pt-4 border-t border-white/10 flex flex-wrap justify-between items-center gap-3">
+                             <p class="text-sm text-blue-200">MAC: <span id="device-mac" class="font-mono text-white opacity-70">Loading...</span></p>
++                            <p class="text-sm text-blue-200 flex items-center gap-2">Console Batt: <span id="console-batt" class="font-mono text-white opacity-70">--</span></p>
+                             <p class="text-sm text-blue-200 flex items-center gap-2">Array Batt: <span id="array-batt" class="font-mono text-white opacity-70">--</span></p>
+                         </div>
+                     </div>
+@@ -2262,8 +2265,18 @@
+             currentOverlay.lightning = Number.isFinite(parseFloat(strikes)) ? parseFloat(strikes) : null;
+             currentOverlay.soilMoisture = Number.isFinite(soilMoisture) ? soilMoisture : null;
+ 
+-            // Setup MAC & Array Battery
++            // Setup MAC and station battery readings
+             safeSetText('device-mac', CONFIG.MAC);
++            const consoleBattVal = parseFloat(getVal(d, 'battery.console.value', NaN));
++            const consoleBattEl = document.getElementById('console-batt');
++            if (consoleBattEl) {
++                if (Number.isFinite(consoleBattVal)) {
++                    const consoleBattColor = consoleBattVal < 3.8 ? 'text-red-400' : consoleBattVal < 4.2 ? 'text-yellow-400' : 'text-green-400';
++                    consoleBattEl.innerHTML = `<span class="${consoleBattColor}">${consoleBattVal.toFixed(2)} V</span>`;
++                } else {
++                    consoleBattEl.textContent = 'Unknown';
++                }
++            }
+             const arrayBattVal = getVal(d, 'battery.sensor_array.value', null);
+             const arrayBattEl = document.getElementById('array-batt');
+             if (arrayBattEl) {
+@@ -3480,5 +3493,7 @@
+         requestAnimationFrame(frame);
+     })();
+     </script>
++<script src="/weather-approved.js?v=20260823-b"></script>
++<script src="/global-nav.js?v=20260822-unified4"></script>
+ </body>
+ </html>
